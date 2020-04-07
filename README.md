@@ -1,5 +1,3 @@
-
-
 # nsx-container-plugin-operator
 
 ## Overview
