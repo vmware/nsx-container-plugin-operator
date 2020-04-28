@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nsx-ncp-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: nsx-ncp-operator
+  template:
+    metadata:
+      labels:
+        name: nsx-ncp-operator
+    spec:
+      serviceAccountName: nsx-ncp-operator
+      containers:
+        - name: nsx-ncp-operator
+          # Replace this with the built image name
+          image: REPLACE_IMAGE
+          command:
+          - nsx-ncp-operator
+          imagePullPolicy: Always
+          env:
+            - name: WATCH_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OPERATOR_NAME
+              value: "nsx-ncp-operator"
