@@ -12,7 +12,7 @@ LABEL description="A cluster operator to deploy nsx-ncp CNI plugin"
 ENV OPERATOR=/usr/local/bin/nsx-ncp-operator \
     USER_UID=1001 \
     USER_NAME=nsx-ncp-operator \
-    WATCH_NAMESPACE=nsx-system
+    WATCH_NAMESPACE=nsx-ncp-operator
 
 # install operator binary
 COPY --from=builder /nsx-ncp-operator/build/bin/nsx-ncp-operator ${OPERATOR}
