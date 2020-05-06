@@ -2,15 +2,17 @@ package configmap
 
 import (
 	"context"
+	"fmt"
+	"time"
 
+	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/cluster-network-operator/pkg/apply"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -20,10 +22,14 @@ import (
 
 var log = logf.Log.WithName("controller_configmap")
 
-/**
-* USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
-* business logic.  Delete these comments after modifying this file.*
- */
+const (
+	configMapNamespace    string        = "nsx-system-operator"
+	configMapName         string        = "nsx-ncp-operator-config"
+	networkCRDName        string        = "cluster"
+	resyncPeriod          time.Duration = 30 * time.Second
+	ncpConfigMapNamespace string        = "nsx-system"
+	ncpConfigMapName      string        = "nsx-ncp-config"
+)
 
 // Add creates a new ConfigMap Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
@@ -33,6 +39,7 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
+	configv1.Install(mgr.GetScheme())
 	return &ReconcileConfigMap{client: mgr.GetClient(), scheme: mgr.GetScheme()}
 }
 
@@ -49,13 +56,8 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	if err != nil {
 		return err
 	}
-
-	// TODO(user): Modify this to be the types you create that are owned by the primary resource
-	// Watch for changes to secondary resource Pods and requeue the owner ConfigMap
-	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
-		IsController: true,
-		OwnerType:    &corev1.ConfigMap{},
-	})
+	// Watch for changes to primary resource Network CRD
+	err = c.Watch(&source.Kind{Type: &configv1.Network{}}, &handler.EnqueueRequestForObject{})
 	if err != nil {
 		return err
 	}
@@ -76,77 +78,103 @@ type ReconcileConfigMap struct {
 
 // Reconcile reads that state of the cluster for a ConfigMap object and makes changes based on the state read
 // and what is in the ConfigMap.Spec
-// TODO(user): Modify this Reconcile function to implement your Controller logic.  This example creates
-// a Pod as an example
 // Note:
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	reqLogger.Info("Reconciling ConfigMap")
+
+	// Check request namespace and name to ignore other changes
+	if request.Namespace == configMapNamespace && request.Name == configMapName {
+		reqLogger.Info("Reconciling nsx-ncp-operator ConfigMap change")
+	} else if request.Namespace == "" && request.Name == networkCRDName {
+		reqLogger.Info("Reconciling cluster Network CRD change")
+	} else {
+		reqLogger.Info("Ignoring other ConfigMap or Network CRD change")
+		return reconcile.Result{}, nil
+	}
 
 	// Fetch the ConfigMap instance
 	instance := &corev1.ConfigMap{}
-	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
+	instanceName := types.NamespacedName{
+		Namespace: configMapNamespace,
+		Name:      configMapName,
+	}
+	err := r.client.Get(context.TODO(), instanceName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
+			// TODO: Set operator Degraded status
 			// Request object not found, could have been deleted after reconcile request.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
+			log.Info("NCP operator ConfigMap is not found")
 			return reconcile.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
 
-	// Define a new Pod object
-	pod := newPodForCR(instance)
-
-	// Set ConfigMap instance as the owner and controller
-	if err := controllerutil.SetControllerReference(instance, pod, r.scheme); err != nil {
+	// Get network CRD configuration
+	networkConfig := &configv1.Network{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: networkCRDName}, networkConfig)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// TODO: Set operator Degraded status
+			// Request object not found, could have been deleted after reconcile request.
+			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
+			// Return and don't requeue
+			log.Info("Cluster network CRD is not found")
+			return reconcile.Result{}, nil
+		}
 		return reconcile.Result{}, err
 	}
 
-	// Check if this Pod already exists
-	found := &corev1.Pod{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, found)
-	if err != nil && errors.IsNotFound(err) {
-		reqLogger.Info("Creating a new Pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
-		err = r.client.Create(context.TODO(), pod)
-		if err != nil {
+	// Fill default configurations
+	if err = FillDefaults(instance, &networkConfig.Spec); err != nil {
+		// TODO: Set operator Degraded status
+		return reconcile.Result{}, nil
+	}
+
+	// Validate configurations
+	if err = Validate(instance, &networkConfig.Spec); err != nil {
+		// TODO: Set operator Degraded status
+		return reconcile.Result{RequeueAfter: resyncPeriod}, err
+	}
+
+	// Compare with previous configurations
+	ncpConfigMap := &corev1.ConfigMap{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: ncpConfigMapNamespace, Name: ncpConfigMapName}, ncpConfigMap)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.Info("NCP ConfigMap does not exist")
+		}
+		ncpConfigMap = nil
+	}
+	if !needApplyChange(instance, ncpConfigMap) {
+		log.Info("no new configuration needs to apply")
+		return reconcile.Result{}, nil
+	}
+
+	// Render configurations
+	objs, err := Render(instance)
+	if err != nil {
+		log.Error(err, "Failed to render configurations")
+		// TODO: Set operator Degraded status
+		return reconcile.Result{}, err
+	}
+
+	// TODO: Set up the Pod reconciler before we start creating DaemonSets/Deployments
+
+	// Apply objects to K8s cluster
+	for _, obj := range objs {
+		if err = apply.ApplyObject(context.TODO(), r.client, obj); err != nil {
+			log.Error(err, fmt.Sprintf("could not apply (%s) %s/%s", obj.GroupVersionKind(), obj.GetNamespace(), obj.GetName()))
+			// TODO: Set operator Degraded status
 			return reconcile.Result{}, err
 		}
-
-		// Pod created successfully - don't requeue
-		return reconcile.Result{}, nil
-	} else if err != nil {
-		return reconcile.Result{}, err
 	}
 
-	// Pod already exists - don't requeue
-	reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+	// TODO: Update network CRD status
+
 	return reconcile.Result{}, nil
-}
-
-// newPodForCR returns a busybox pod with the same name/namespace as the cr
-func newPodForCR(cr *corev1.ConfigMap) *corev1.Pod {
-	labels := map[string]string{
-		"app": cr.Name,
-	}
-	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cr.Name + "-pod",
-			Namespace: cr.Namespace,
-			Labels:    labels,
-		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{
-					Name:    "busybox",
-					Image:   "busybox",
-					Command: []string{"sleep", "3600"},
-				},
-			},
-		},
-	}
 }

@@ -1,0 +1,11 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: ncp-cluster-role}
+rules:
+- apiGroups: ['', extensions, networking.k8s.io, config.openshift.io]
+  resources: [deployments, endpoints, pods/log, nodes, replicationcontrollers, secrets,
+    routes, network, networks]
+  verbs: [get, watch, list]
+- apiGroups: [route.openshift.io]
+  resources: [routes]
+  verbs: [get, watch, list]

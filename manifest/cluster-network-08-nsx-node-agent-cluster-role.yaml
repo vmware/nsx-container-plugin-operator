@@ -1,0 +1,10 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: nsx-node-agent-cluster-role}
+rules:
+- apiGroups: ['']
+  resources: [endpoints, services]
+  verbs: [get, watch, list]
+- apiGroups: ['']
+  resources: [pods]
+  verbs: [get, list, update, patch]
