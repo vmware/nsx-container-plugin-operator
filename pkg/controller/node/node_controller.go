@@ -2,15 +2,27 @@ package node
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
+	"crypto/tls"
+	"github.com/pkg/errors"
+	"github.com/vmware/vsphere-automation-sdk-go/runtime/core"
+	"github.com/vmware/vsphere-automation-sdk-go/runtime/data"
+	policyclient "github.com/vmware/vsphere-automation-sdk-go/runtime/protocol/client"
+	"github.com/vmware/vsphere-automation-sdk-go/runtime/security"
+	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/infra/segments"
+	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/model"
+	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/search"
+	operatortypes "gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/types"
+	"gopkg.in/ini.v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"net/http"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -19,6 +31,7 @@ import (
 )
 
 var log = logf.Log.WithName("controller_node")
+
 
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
@@ -50,16 +63,6 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// TODO(user): Modify this to be the types you create that are owned by the primary resource
-	// Watch for changes to secondary resource Pods and requeue the owner Node
-	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
-		IsController: true,
-		OwnerType:    &corev1.Node{},
-	})
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -74,10 +77,95 @@ type ReconcileNode struct {
 	scheme *runtime.Scheme
 }
 
+type NsxConfig struct {
+	PolicySecurityContext *core.SecurityContextImpl
+	PolicyHTTPClient      *http.Client
+	PolicyConnector       *policyclient.RestConnector
+	Cluster               string
+}
+
+var cachedNodeSet = map[string]string{}
+
+
+func searchSegmentPortByNodeName(nsxConfig *NsxConfig, nodeName string) (*model.SegmentPort, error) {
+	log.Info(fmt.Sprintf("Searching segment port for node %s", nodeName))
+	connector := nsxConfig.PolicyConnector
+	searchClient := search.NewDefaultQueryClient(connector)
+	// If multiple node VMs have the same name, the index postfix will be added to the segment port name, e.g.
+	//   1. compute-0/compute-0.vmx@<tn-id> ("compute-0" is a node VM name)
+	//   2. compute-0_2/compute-0.vmx@<tn-id>
+	searchString := fmt.Sprintf("resource_type:SegmentPort AND display_name:%s*\\/%s.vmx*", nodeName, nodeName)
+	ports, err := searchClient.List(searchString, nil, nil, nil, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	if len(ports.Results) == 0 {
+		return nil, errors.Errorf("Segment port for node %s not found", nodeName)
+	}
+	if len(ports.Results) > 1 {
+		// TODO: handle the case that multiple node with the same name in multiple clusters
+		return nil, errors.Errorf("Found multiple segment ports for node %s", nodeName)
+	}
+	portId, err := ports.Results[0].Field("id")
+	if err != nil{
+		return nil, err
+	}
+	portPath, err := ports.Results[0].Field("parent_path")
+	if err != nil{
+		return nil, err
+	}
+	portIdValue := (portId).(*data.StringValue).Value()
+	portPathValue := (portPath).(*data.StringValue).Value()
+	segmentPort := model.SegmentPort{
+		Id: &portIdValue,
+		Path: &portPathValue,
+	}
+	return &segmentPort, nil
+}
+
+func (r *ReconcileNode)createNsxConfig() (*NsxConfig, error){
+	// TODO: get configurations from configmap_controller
+	log.Info("Getting NCP configmap for node controller")
+	ncpConfigMap := &corev1.ConfigMap{}
+	err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.NcpConfigMapName}, ncpConfigMap)
+	if err != nil {
+		return nil, err
+	}
+	data := ncpConfigMap.Data
+	cfg, err := ini.Load([]byte(data[operatortypes.ConfigMapDataKey]))
+	if err != nil {
+		return nil, err
+	}
+	var cluster = cfg.Section("coe").Key("cluster").Value()
+	// only use the first one if multiple endpoints are provided in nsx_api_managers
+	var managerHost = strings.Split(cfg.Section("nsx_v3").Key("nsx_api_managers").Value(), ",")[0]
+	var user = cfg.Section("nsx_v3").Key("nsx_api_user").Value()
+	var password = cfg.Section("nsx_v3").Key("nsx_api_password").Value()
+	nsxConfig := NsxConfig{}
+	nsxConfig.Cluster = cluster
+	tlsConfig := tls.Config{InsecureSkipVerify: true}
+	tlsConfig.BuildNameToCertificate()
+	tr := &http.Transport{
+		Proxy:           http.ProxyFromEnvironment,
+		TLSClientConfig: &tlsConfig,
+	}
+	httpClient := http.Client{Transport: tr}
+	nsxConfig.PolicyHTTPClient = &httpClient
+	securityCtx := core.NewSecurityContextImpl()
+	securityCtx.SetProperty(security.AUTHENTICATION_SCHEME_ID, security.USER_PASSWORD_SCHEME_ID)
+	securityCtx.SetProperty(security.USER_KEY, user)
+	securityCtx.SetProperty(security.PASSWORD_KEY, password)
+	nsxConfig.PolicySecurityContext = securityCtx
+	connector := policyclient.NewRestConnector(fmt.Sprintf("https://%s", managerHost), *nsxConfig.PolicyHTTPClient)
+	if nsxConfig.PolicySecurityContext != nil {
+		connector.SetSecurityContext(nsxConfig.PolicySecurityContext)
+	}
+	nsxConfig.PolicyConnector = connector
+	return &nsxConfig, nil
+}
+
 // Reconcile reads that state of the cluster for a Node object and makes changes based on the state read
 // and what is in the Node.Spec
-// TODO(user): Modify this Reconcile function to implement your Controller logic.  This example creates
-// a Pod as an example
 // Note:
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
@@ -85,68 +173,93 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger.Info("Reconciling Node")
 
+	nodeName := request.Name
 	// Fetch the Node instance
 	instance := &corev1.Node{}
 	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			// Request object not found, could have been deleted after reconcile request.
-			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
-			// Return and don't requeue
+		if k8serrors.IsNotFound(err) {
+			reqLogger.Info("Node not found and remove it from cache")
+			delete(cachedNodeSet, nodeName)
 			return reconcile.Result{}, nil
 		}
-		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
 
-	// Define a new Pod object
-	pod := newPodForCR(instance)
-
-	// Set Node instance as the owner and controller
-	if err := controllerutil.SetControllerReference(instance, pod, r.scheme); err != nil {
-		return reconcile.Result{}, err
-	}
-
-	// Check if this Pod already exists
-	found := &corev1.Pod{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, found)
-	if err != nil && errors.IsNotFound(err) {
-		reqLogger.Info("Creating a new Pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
-		err = r.client.Create(context.TODO(), pod)
-		if err != nil {
-			return reconcile.Result{}, err
+	nodeAddresses := instance.Status.Addresses
+	var nodeAddress string
+	// TODO: An example for the nodeAddresses is:
+	// [{ExternalIP 192.168.10.38} {InternalIP 192.168.10.38} {Hostname compute-0}]"}
+	// Need to confirm if it's possible to have multiple ExternalIPs and handle that case
+	reqLogger.Info("Got the node address info", "nodeAddresses", nodeAddresses)
+	for _, address := range(nodeAddresses) {
+		if address.Type == "ExternalIP" {
+			nodeAddress = address.Address
+			break
 		}
-
-		// Pod created successfully - don't requeue
+	}
+	if err != nil {
+		log.Error(err, "Failed to get the node info")
+		return reconcile.Result{}, err
+	}
+	if cachedNodeSet[nodeName] == nodeAddress {
+		// TODO: consider the corner case that node port is changed but the address is not changed
+		reqLogger.Info("Skip reconcile: node was processed")
 		return reconcile.Result{}, nil
-	} else if err != nil {
+	}
+
+	nsxConfig, err := r.createNsxConfig()
+	if err != nil {
 		return reconcile.Result{}, err
 	}
 
-	// Pod already exists - don't requeue
-	reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
-	return reconcile.Result{}, nil
-}
+	cluster := nsxConfig.Cluster
+	reqLogger.Info("Searching the logical port for node")
+	segmentPort, err := searchSegmentPortByNodeName(nsxConfig, nodeName)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	reqLogger.Info("Got the segment port", "segmenetPort.Id", *segmentPort.Id, "segmentPort.Path", *segmentPort.Path, "cluster", cluster)
 
-// newPodForCR returns a busybox pod with the same name/namespace as the cr
-func newPodForCR(cr *corev1.Node) *corev1.Pod {
-	labels := map[string]string{
-		"app": cr.Name,
+	// TODO: find a way to fill the segmentPort by using the return value from searchSegmentPortByNodeName then we won't need to invoke the Get API again.
+	sl := strings.Split(*segmentPort.Path, "/")
+	segmentId := sl[len(sl)-1]
+	portsClient := segments.NewDefaultPortsClient(nsxConfig.PolicyConnector)
+	*segmentPort, err = portsClient.Get(segmentId, *segmentPort.Id)
+	if err != nil {
+		return reconcile.Result{}, err
 	}
-	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cr.Name + "-pod",
-			Namespace: cr.Namespace,
-			Labels:    labels,
-		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{
-					Name:    "busybox",
-					Image:   "busybox",
-					Command: []string{"sleep", "3600"},
-				},
-			},
-		},
+
+	foundNodeTag := false
+	foundClusterTag := false
+	nodeNameScope := "ncp/node_name"
+	clusterScope := "ncp/cluster"
+	for _, tag := range(segmentPort.Tags) {
+		if *tag.Scope == nodeNameScope && *tag.Tag == nodeName {
+			foundNodeTag = true
+		} else if *tag.Scope == clusterScope && *tag.Tag == cluster {
+			foundClusterTag = true
+		}
 	}
+	if foundNodeTag == true && foundClusterTag == true {
+		reqLogger.Info("Skip reconcile: node port was tagged")
+		cachedNodeSet[nodeName] = nodeAddress
+		return reconcile.Result{}, err
+	}
+	reqLogger.Info("Updating node tag for segment port", "segmentPort.Id", segmentPort.Id)
+	if foundNodeTag == false {
+		var nodeTag = model.Tag{Scope: &nodeNameScope, Tag: &nodeName}
+		segmentPort.Tags = append(segmentPort.Tags, nodeTag)
+	}
+	if foundClusterTag == false {
+		var clusterTag = model.Tag{Scope: &clusterScope, Tag: &cluster}
+		segmentPort.Tags = append(segmentPort.Tags, clusterTag)
+	}
+	_, err = portsClient.Update(segmentId, *segmentPort.Id, *segmentPort)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	cachedNodeSet[nodeName] = nodeAddress
+	reqLogger.Info("Successfully updated tags on segment port", "segmentPort.Id", segmentPort.Id)
+	return reconcile.Result{}, nil
 }

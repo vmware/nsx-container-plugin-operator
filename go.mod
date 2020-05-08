@@ -13,6 +13,8 @@ require (
 	gopkg.in/ini.v1 v1.51.0
 	k8s.io/api v0.18.2
 	k8s.io/apimachinery v0.18.2
+	github.com/vmware/vsphere-automation-sdk-go/runtime v0.2.0
+	github.com/vmware/vsphere-automation-sdk-go/services/nsxt v0.3.0
 	k8s.io/client-go v12.0.0+incompatible
 	sigs.k8s.io/controller-runtime v0.5.2
 )
