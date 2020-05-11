@@ -1,5 +1,5 @@
 package version
 
-var (
+const (
 	Version = "0.0.1"
 )

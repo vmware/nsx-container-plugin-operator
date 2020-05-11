@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"crypto/tls"
+	"net/http"
+
 	"github.com/pkg/errors"
 	"github.com/vmware/vsphere-automation-sdk-go/runtime/core"
 	"github.com/vmware/vsphere-automation-sdk-go/runtime/data"
@@ -14,13 +16,13 @@ import (
 	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/infra/segments"
 	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/model"
 	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/search"
+	"gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/controller/statusmanager"
 	operatortypes "gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/types"
 	"gopkg.in/ini.v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"net/http"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -32,7 +34,6 @@ import (
 
 var log = logf.Log.WithName("controller_node")
 
-
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
 * business logic.  Delete these comments after modifying this file.*
@@ -40,7 +41,7 @@ var log = logf.Log.WithName("controller_node")
 
 // Add creates a new Node Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
-func Add(mgr manager.Manager) error {
+func Add(mgr manager.Manager, status *statusmanager.StatusManager) error {
 	return add(mgr, newReconciler(mgr))
 }
 
@@ -86,7 +87,6 @@ type NsxConfig struct {
 
 var cachedNodeSet = map[string]string{}
 
-
 func searchSegmentPortByNodeName(nsxConfig *NsxConfig, nodeName string) (*model.SegmentPort, error) {
 	log.Info(fmt.Sprintf("Searching segment port for node %s", nodeName))
 	connector := nsxConfig.PolicyConnector
@@ -107,23 +107,23 @@ func searchSegmentPortByNodeName(nsxConfig *NsxConfig, nodeName string) (*model.
 		return nil, errors.Errorf("Found multiple segment ports for node %s", nodeName)
 	}
 	portId, err := ports.Results[0].Field("id")
-	if err != nil{
+	if err != nil {
 		return nil, err
 	}
 	portPath, err := ports.Results[0].Field("parent_path")
-	if err != nil{
+	if err != nil {
 		return nil, err
 	}
 	portIdValue := (portId).(*data.StringValue).Value()
 	portPathValue := (portPath).(*data.StringValue).Value()
 	segmentPort := model.SegmentPort{
-		Id: &portIdValue,
+		Id:   &portIdValue,
 		Path: &portPathValue,
 	}
 	return &segmentPort, nil
 }
 
-func (r *ReconcileNode)createNsxConfig() (*NsxConfig, error){
+func (r *ReconcileNode) createNsxConfig() (*NsxConfig, error) {
 	// TODO: get configurations from configmap_controller
 	log.Info("Getting NCP configmap for node controller")
 	ncpConfigMap := &corev1.ConfigMap{}
@@ -192,7 +192,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	// [{ExternalIP 192.168.10.38} {InternalIP 192.168.10.38} {Hostname compute-0}]"}
 	// Need to confirm if it's possible to have multiple ExternalIPs and handle that case
 	reqLogger.Info("Got the node address info", "nodeAddresses", nodeAddresses)
-	for _, address := range(nodeAddresses) {
+	for _, address := range nodeAddresses {
 		if address.Type == "ExternalIP" {
 			nodeAddress = address.Address
 			break
@@ -234,7 +234,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	foundClusterTag := false
 	nodeNameScope := "ncp/node_name"
 	clusterScope := "ncp/cluster"
-	for _, tag := range(segmentPort.Tags) {
+	for _, tag := range segmentPort.Tags {
 		if *tag.Scope == nodeNameScope && *tag.Tag == nodeName {
 			foundNodeTag = true
 		} else if *tag.Scope == clusterScope && *tag.Tag == cluster {

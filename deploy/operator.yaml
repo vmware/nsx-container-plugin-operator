@@ -13,6 +13,7 @@ spec:
       labels:
         name: nsx-ncp-operator
     spec:
+      hostNetwork: true
       serviceAccountName: nsx-ncp-operator
       containers:
         - name: nsx-ncp-operator
