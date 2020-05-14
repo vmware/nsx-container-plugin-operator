@@ -30,7 +30,7 @@ func FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error
 		return err
 	}
 	// We support only policy API, single tier topo on openshift4
-	appendErrorIfNotNil(&errs, fillDefault(cfg, "coe", "adaptor", "openshift4", true))
+	appendErrorIfNotNil(&errs, fillDefault(cfg, "coe", "adaptor", "openshift", true))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "policy_nsxapi", "True", true))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "single_tier_topology", "True", true))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "coe", "enable_snat", "True", false))
@@ -40,13 +40,13 @@ func FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error
 	var buf bytes.Buffer
 	_, err = cfg.WriteTo(&buf)
 	appendErrorIfNotNil(&errs, errors.Wrapf(err, "failed to write config in buffer"))
-	(*data)[configMapKey] = buf.String()
+	// go-ini does not write DEFAULT section name to buffer, so add it here
+	(*data)[configMapKey] = "\n[DEFAULT]\n" + buf.String()
 
 	if len(errs) > 0 {
 		return errors.Errorf("failed to fill defaults: %v", errs)
 	}
 	return nil
-
 }
 
 func appendErrorIfNotNil(errs *[]error, err error) {
