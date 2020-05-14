@@ -11,22 +11,19 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-network-operator/pkg/render"
 	"github.com/pkg/errors"
+	"gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/types"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 const (
-	manifestDir                 string = "./manifest"
-	configMapKey                string = "ncp.ini"
-	ncpConfigMapRenderKey       string = "NSXNCPConfig"
-	nodeAgentConfigMapRenderKey string = "NSXNodeAgentConfig"
-	ncpImageKey                 string = "NcpImage"
+	manifestDir string = "./manifest"
 )
 
 func FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error {
 	errs := []error{}
 	data := &configmap.Data
-	cfg, err := ini.Load([]byte((*data)[configMapKey]))
+	cfg, err := ini.Load([]byte((*data)[types.ConfigMapDataKey]))
 	if err != nil {
 		log.Error(err, "failed to load ConfigMap")
 		return err
@@ -43,7 +40,7 @@ func FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error
 	_, err = cfg.WriteTo(&buf)
 	appendErrorIfNotNil(&errs, errors.Wrapf(err, "failed to write config in buffer"))
 	// go-ini does not write DEFAULT section name to buffer, so add it here
-	(*data)[configMapKey] = "\n[DEFAULT]\n" + buf.String()
+	(*data)[types.ConfigMapDataKey] = "\n[DEFAULT]\n" + buf.String()
 
 	if len(errs) > 0 {
 		return errors.Errorf("failed to fill defaults: %v", errs)
@@ -108,7 +105,7 @@ func validateConfig(cfg *ini.File, sec string, key string) error {
 func validateConfigMap(configmap *corev1.ConfigMap) []error {
 	errs := []error{}
 	data := configmap.Data
-	cfg, err := ini.Load([]byte(data[configMapKey]))
+	cfg, err := ini.Load([]byte(data[types.ConfigMapDataKey]))
 	if err != nil {
 		errs = append(errs, errors.Wrapf(err, "failed to load ConfigMap"))
 		return errs
@@ -144,15 +141,15 @@ func Render(configmap *corev1.ConfigMap) ([]*unstructured.Unstructured, error) {
 	// Set configmap data
 	data := configmap.Data
 	renderData := render.MakeRenderData()
-	renderData.Data[ncpConfigMapRenderKey] = data[configMapKey]
-	renderData.Data[nodeAgentConfigMapRenderKey] = data[configMapKey]
+	renderData.Data[types.NcpConfigMapRenderKey] = data[types.ConfigMapDataKey]
+	renderData.Data[types.NodeAgentConfigMapRenderKey] = data[types.ConfigMapDataKey]
 
 	// Set NCP image
 	ncpImage := os.Getenv("NCP_IMAGE")
 	if ncpImage == "" {
 		ncpImage = "nsx-ncp:latest"
 	}
-	renderData.Data[ncpImageKey] = os.Getenv("NCP_IMAGE")
+	renderData.Data[types.NcpImageKey] = os.Getenv("NCP_IMAGE")
 
 	manifests, err := render.RenderDir(manifestDir, &renderData)
 	if err != nil {
@@ -169,7 +166,7 @@ func needApplyChange(newConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap) 
 	}
 	newData := newConfig.Data
 	prevData := prevConfig.Data
-	if strings.Compare(strings.TrimSpace(newData[configMapKey]), strings.TrimSpace(prevData[configMapKey])) == 0 {
+	if strings.Compare(strings.TrimSpace(newData[types.ConfigMapDataKey]), strings.TrimSpace(prevData[types.ConfigMapDataKey])) == 0 {
 		return false
 	}
 

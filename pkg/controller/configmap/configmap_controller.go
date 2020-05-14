@@ -7,6 +7,7 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-network-operator/pkg/apply"
+	ncptypes "gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/types"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -22,14 +23,7 @@ import (
 
 var log = logf.Log.WithName("controller_configmap")
 
-const (
-	configMapNamespace    string        = "nsx-system-operator"
-	configMapName         string        = "nsx-ncp-operator-config"
-	networkCRDName        string        = "cluster"
-	resyncPeriod          time.Duration = 30 * time.Second
-	ncpConfigMapNamespace string        = "nsx-system"
-	ncpConfigMapName      string        = "nsx-ncp-config"
-)
+const resyncPeriod time.Duration = 30 * time.Second
 
 // Add creates a new ConfigMap Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
@@ -85,9 +79,9 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
 	// Check request namespace and name to ignore other changes
-	if request.Namespace == configMapNamespace && request.Name == configMapName {
+	if request.Namespace == ncptypes.OperatorNamespace && request.Name == ncptypes.ConfigMapName {
 		reqLogger.Info("Reconciling nsx-ncp-operator ConfigMap change")
-	} else if request.Namespace == "" && request.Name == networkCRDName {
+	} else if request.Namespace == "" && request.Name == ncptypes.NetworkCRDName {
 		reqLogger.Info("Reconciling cluster Network CRD change")
 	} else {
 		reqLogger.Info("Ignoring other ConfigMap or Network CRD change")
@@ -97,8 +91,8 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	// Fetch the ConfigMap instance
 	instance := &corev1.ConfigMap{}
 	instanceName := types.NamespacedName{
-		Namespace: configMapNamespace,
-		Name:      configMapName,
+		Namespace: ncptypes.OperatorNamespace,
+		Name:      ncptypes.ConfigMapName,
 	}
 	err := r.client.Get(context.TODO(), instanceName, instance)
 	if err != nil {
@@ -116,7 +110,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 
 	// Get network CRD configuration
 	networkConfig := &configv1.Network{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: networkCRDName}, networkConfig)
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: ncptypes.NetworkCRDName}, networkConfig)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// TODO: Set operator Degraded status
@@ -143,7 +137,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 
 	// Compare with previous configurations
 	ncpConfigMap := &corev1.ConfigMap{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: ncpConfigMapNamespace, Name: ncpConfigMapName}, ncpConfigMap)
+	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: ncptypes.NsxNamespace, Name: ncptypes.NcpConfigMapName}, ncpConfigMap)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			log.Info("NCP ConfigMap does not exist")
