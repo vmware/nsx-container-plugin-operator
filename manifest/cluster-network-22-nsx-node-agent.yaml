@@ -18,7 +18,7 @@ spec:
           valueFrom:
             fieldRef: {fieldPath: metadata.name}
         - {name: CONTAINER_NAME, value: nsx-node-agent}
-        image: nsx-ncp
+        image: "{{.NcpImage}}"
         imagePullPolicy: IfNotPresent
         livenessProbe:
           exec:
@@ -43,7 +43,7 @@ spec:
           valueFrom:
             fieldRef: {fieldPath: metadata.name}
         - {name: CONTAINER_NAME, value: nsx-kube-proxy}
-        image: nsx-ncp
+        image: "{{.NcpImage}}"
         imagePullPolicy: IfNotPresent
         livenessProbe:
           exec:
@@ -58,7 +58,7 @@ spec:
         - {mountPath: /etc/nsx-ujo, name: projected-volume, readOnly: true}
         - {mountPath: /var/run/openvswitch, name: openvswitch}
       - command: [start_ovs]
-        image: nsx-ncp
+        image: "{{.NcpImage}}"
         imagePullPolicy: IfNotPresent
         livenessProbe:
           exec:

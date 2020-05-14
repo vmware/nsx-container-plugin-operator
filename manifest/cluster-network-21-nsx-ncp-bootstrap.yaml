@@ -13,14 +13,14 @@ spec:
     spec:
       containers:
       - command: [/bin/bash, -c, while true; do sleep 5; done]
-        image: nsx-ncp
+        image:  "{{.NcpImage}}"
         imagePullPolicy: IfNotPresent
         name: nsx-dummy
       hostNetwork: true
       hostPID: true
       initContainers:
       - command: [init_k8s_node]
-        image: nsx-ncp
+        image: "{{.NcpImage}}"
         imagePullPolicy: IfNotPresent
         name: nsx-ncp-bootstrap
         securityContext:

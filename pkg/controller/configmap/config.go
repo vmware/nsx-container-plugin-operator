@@ -3,6 +3,7 @@ package configmap
 import (
 	"bytes"
 	"net"
+	"os"
 	"strings"
 
 	"gopkg.in/ini.v1"
@@ -19,6 +20,7 @@ const (
 	configMapKey                string = "ncp.ini"
 	ncpConfigMapRenderKey       string = "NSXNCPConfig"
 	nodeAgentConfigMapRenderKey string = "NSXNodeAgentConfig"
+	ncpImageKey                 string = "NcpImage"
 )
 
 func FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error {
@@ -138,11 +140,20 @@ func validateClusterNetwork(spec *configv1.NetworkSpec) []error {
 func Render(configmap *corev1.ConfigMap) ([]*unstructured.Unstructured, error) {
 	log.Info("Starting render phase")
 	objs := []*unstructured.Unstructured{}
-	data := configmap.Data
 
+	// Set configmap data
+	data := configmap.Data
 	renderData := render.MakeRenderData()
 	renderData.Data[ncpConfigMapRenderKey] = data[configMapKey]
 	renderData.Data[nodeAgentConfigMapRenderKey] = data[configMapKey]
+
+	// Set NCP image
+	ncpImage := os.Getenv("NCP_IMAGE")
+	if ncpImage == "" {
+		ncpImage = "nsx-ncp:latest"
+	}
+	renderData.Data[ncpImageKey] = os.Getenv("NCP_IMAGE")
+
 	manifests, err := render.RenderDir(manifestDir, &renderData)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to render manifests")

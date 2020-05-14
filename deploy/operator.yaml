@@ -32,3 +32,5 @@ spec:
                   fieldPath: metadata.name
             - name: OPERATOR_NAME
               value: "nsx-ncp-operator"
+            - name: NCP_IMAGE
+              value: "nsx-ncp:latest"
