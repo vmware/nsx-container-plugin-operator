@@ -129,9 +129,17 @@ func validateConfigMap(configmap *corev1.ConfigMap) []error {
 
 func validateClusterNetwork(spec *configv1.NetworkSpec) []error {
 	errs := []error{}
+	if strings.ToLower(spec.NetworkType) != "nsx" {
+		appendErrorIfNotNil(&errs, errors.Errorf("network type %s is not nsx", spec.NetworkType))
+		return errs
+	}
+	if len(spec.ClusterNetwork) == 0 {
+		appendErrorIfNotNil(&errs, errors.Errorf("cluster network cannot be empty"))
+		return errs
+	}
 	for idx, pool := range spec.ClusterNetwork {
 		_, _, err := net.ParseCIDR(pool.CIDR)
-		appendErrorIfNotNil(&errs, errors.Wrapf(err, "could not parse ClusterNetwork %d CIDR %q", idx, pool.CIDR))
+		appendErrorIfNotNil(&errs, errors.Wrapf(err, "cluster network %d CIDR %q is invalid", idx, pool.CIDR))
 	}
 	return errs
 }
@@ -182,4 +190,33 @@ func needApplyChange(newConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap) 
 	}
 
 	return true
+}
+
+func ValidateChangeIsSafe(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap) error {
+	if prevConfig == nil {
+		return nil
+	}
+	currCfg, _ := ini.Load([]byte(currConfig.Data[configMapKey]))
+	prevCfg, _ := ini.Load([]byte(prevConfig.Data[configMapKey]))
+	currBlocks := strings.Split(currCfg.Section("nsx_v3").Key("container_ip_blocks").Value(), ",")
+	prevBlocks := strings.Split(prevCfg.Section("nsx_v3").Key("container_ip_blocks").Value(), ",")
+
+	missingBlocks := []string{}
+	for _, p := range prevBlocks {
+		prevExists := false
+		for _, c := range currBlocks {
+			if p == c {
+				prevExists = true
+				break
+			}
+		}
+		if !prevExists {
+			missingBlocks = append(missingBlocks, p)
+		}
+	}
+
+	if len(missingBlocks) > 0 {
+		return errors.Errorf("cluster network %s are missing", missingBlocks)
+	}
+	return nil
 }

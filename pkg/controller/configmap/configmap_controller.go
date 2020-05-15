@@ -149,6 +149,13 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, nil
 	}
 
+	// Check if new change is safe to apply
+	err = ValidateChangeIsSafe(instance, ncpConfigMap)
+	if err != nil {
+		log.Error(err, "New configuration is not safe to apply")
+		return reconcile.Result{}, err
+	}
+
 	// Render configurations
 	objs, err := Render(instance)
 	if err != nil {
