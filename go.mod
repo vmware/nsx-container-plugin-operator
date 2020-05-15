@@ -5,17 +5,18 @@ go 1.13
 require (
 	github.com/Masterminds/sprig v2.22.0+incompatible
 	github.com/ghodss/yaml v1.0.0
+	github.com/google/martian v2.1.0+incompatible
 	github.com/openshift/api v3.9.1-0.20191111211345-a27ff30ebf09+incompatible
 	github.com/openshift/cluster-network-operator v0.0.0-20200505233431-0c44782d5245
 	github.com/openshift/library-go v0.0.0-20200511081854-8db3781f6d14
 	github.com/operator-framework/operator-sdk v0.17.1-0.20200428043048-cb85478660f0
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/pflag v1.0.5
+	github.com/vmware/vsphere-automation-sdk-go/runtime v0.2.0
+	github.com/vmware/vsphere-automation-sdk-go/services/nsxt v0.3.0
 	gopkg.in/ini.v1 v1.51.0
 	k8s.io/api v0.18.2
 	k8s.io/apimachinery v0.18.2
-	github.com/vmware/vsphere-automation-sdk-go/runtime v0.2.0
-	github.com/vmware/vsphere-automation-sdk-go/services/nsxt v0.3.0
 	k8s.io/client-go v12.0.0+incompatible
 	sigs.k8s.io/controller-runtime v0.5.2
 	sigs.k8s.io/structured-merge-diff v1.0.2 // indirect

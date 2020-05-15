@@ -11,6 +11,7 @@ import (
 	ncptypes "gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/types"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -145,7 +146,11 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		}
 		ncpConfigMap = nil
 	}
-	if !needApplyChange(instance, ncpConfigMap) {
+	ncpNeedChange, agentNeedChange, err := NeedApplyChange(instance, ncpConfigMap)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	if !ncpNeedChange && !agentNeedChange {
 		log.Info("no new configuration needs to apply")
 		return reconcile.Result{}, nil
 	}
@@ -176,7 +181,35 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		}
 	}
 
+	// Delete old NCP and nsx-node-agent pods
+	if ncpConfigMap != nil && ncpNeedChange {
+		err = deleteExistingPods(r.client, ncptypes.NsxNcpDeploymentName)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+	if ncpConfigMap != nil && agentNeedChange {
+		err = deleteExistingPods(r.client, ncptypes.NsxNodeAgentDsName)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+
 	// TODO: Update network CRD status
 
 	return reconcile.Result{}, nil
+}
+
+func deleteExistingPods(c client.Client, component string) error {
+	var period int64 = 0
+	policy := metav1.DeletePropagationForeground
+	label := map[string]string{"component": component}
+	err := c.DeleteAllOf(context.TODO(), &corev1.Pod{}, client.InNamespace(ncptypes.NsxNamespace),
+		client.MatchingLabels(label), client.PropagationPolicy(policy), client.GracePeriodSeconds(period))
+	if err != nil {
+		log.Error(err, fmt.Sprintf("Failed to delete pod %s", component))
+		return err
+	}
+	log.Info(fmt.Sprintf("Successfully deleted pod %s", component))
+	return nil
 }

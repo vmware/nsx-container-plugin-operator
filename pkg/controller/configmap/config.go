@@ -2,8 +2,10 @@ package configmap
 
 import (
 	"bytes"
+	"fmt"
 	"net"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -179,25 +181,89 @@ func Render(configmap *corev1.ConfigMap) ([]*unstructured.Unstructured, error) {
 	return objs, nil
 }
 
-func needApplyChange(newConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap) bool {
+func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap) (ncpNeedChange bool, agentNeedChange bool, err error) {
 	if prevConfig == nil {
-		return true
+		return true, true, nil
 	}
-	newData := newConfig.Data
+	currData := currConfig.Data
 	prevData := prevConfig.Data
-	if strings.Compare(strings.TrimSpace(newData[types.ConfigMapDataKey]), strings.TrimSpace(prevData[types.ConfigMapDataKey])) == 0 {
-		return false
+	// Compare the whole data
+	if strings.Compare(strings.TrimSpace(currData[types.ConfigMapDataKey]), strings.TrimSpace(prevData[types.ConfigMapDataKey])) == 0 {
+		return false, false, nil
+	}
+	// Compare every section to get different section slice
+	currCfg, err := ini.Load([]byte(currData[types.ConfigMapDataKey]))
+	if err != nil {
+		log.Error(err, "Failed to load new ConfigMap")
+		return false, false, err
+	}
+	prevCfg, err := ini.Load([]byte(prevData[types.ConfigMapDataKey]))
+	if err != nil {
+		log.Error(err, "Failed to load previous ConfigMap")
+		return false, false, err
+	}
+	diffSecs := []string{}
+	currSecs := currCfg.SectionStrings()
+	for _, name := range currSecs {
+		_, err = prevCfg.GetSection(name)
+		if err != nil {
+			diffSecs = append(diffSecs, name)
+			continue
+		}
+		if !reflect.DeepEqual(currCfg.Section(name).KeysHash(), prevCfg.Section(name).KeysHash()) {
+			diffSecs = append(diffSecs, name)
+		}
+	}
+	prevSecs := prevCfg.SectionStrings()
+	for _, name := range prevSecs {
+		_, err = currCfg.GetSection(name)
+		if err != nil {
+			diffSecs = append(diffSecs, name)
+		}
+	}
+	// Check whether different sections impact on NCP and nsx-node-agent
+	ncpNeedChange, agentNeedChange = false, false
+	for _, sec := range diffSecs {
+		if !ncpNeedChange && inSlice(sec, types.NcpSections) {
+			ncpNeedChange = true
+		}
+		if !agentNeedChange && inSlice(sec, types.AgentSections) {
+			agentNeedChange = true
+		}
+		if ncpNeedChange && agentNeedChange {
+			break
+		}
+	}
+	if len(diffSecs) > 0 {
+		log.Info(fmt.Sprintf("Section %s changed", diffSecs))
 	}
 
-	return true
+	return ncpNeedChange, agentNeedChange, nil
+}
+
+func inSlice(str string, s []string) bool {
+	for _, v := range s {
+		if str == v {
+			return true
+		}
+	}
+	return false
 }
 
 func ValidateChangeIsSafe(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap) error {
 	if prevConfig == nil {
 		return nil
 	}
-	currCfg, _ := ini.Load([]byte(currConfig.Data[configMapKey]))
-	prevCfg, _ := ini.Load([]byte(prevConfig.Data[configMapKey]))
+	currCfg, err := ini.Load([]byte(currConfig.Data[types.ConfigMapDataKey]))
+	if err != nil {
+		log.Error(err, "Failed to load current ConfigMap")
+		return err
+	}
+	prevCfg, err := ini.Load([]byte(prevConfig.Data[types.ConfigMapDataKey]))
+	if err != nil {
+		log.Error(err, "Failed to load previous ConfigMap")
+		return err
+	}
 	currBlocks := strings.Split(currCfg.Section("nsx_v3").Key("container_ip_blocks").Value(), ",")
 	prevBlocks := strings.Split(prevCfg.Section("nsx_v3").Key("container_ip_blocks").Value(), ",")
 
