@@ -10,4 +10,5 @@ const (
 	NcpConfigMapRenderKey       string = "NSXNCPConfig"
 	NodeAgentConfigMapRenderKey string = "NSXNodeAgentConfig"
 	NcpImageKey                 string = "NcpImage"
+	NcpReplicasKey              string = "NcpReplicas"
 )

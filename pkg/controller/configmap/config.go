@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 
 	"gopkg.in/ini.v1"
@@ -33,6 +34,7 @@ func FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "policy_nsxapi", "True", true))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "single_tier_topology", "True", true))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "coe", "enable_snat", "True", false))
+	appendErrorIfNotNil(&errs, fillDefault(cfg, "ha", "enable", "True", false))
 	appendErrorIfNotNil(&errs, fillClusterNetwork(spec, cfg))
 
 	// Write config back to ConfigMap data
@@ -150,6 +152,15 @@ func Render(configmap *corev1.ConfigMap) ([]*unstructured.Unstructured, error) {
 		ncpImage = "nsx-ncp:latest"
 	}
 	renderData.Data[types.NcpImageKey] = os.Getenv("NCP_IMAGE")
+
+	// Set NCP replicas
+	cfg, _ := ini.Load([]byte(data[types.ConfigMapDataKey]))
+	haEnabled, _ := strconv.ParseBool(cfg.Section("ha").Key("enable").Value())
+	if haEnabled {
+		renderData.Data[types.NcpReplicasKey] = types.NcpHaReplicas
+	} else {
+		renderData.Data[types.NcpReplicasKey] = 1
+	}
 
 	manifests, err := render.RenderDir(manifestDir, &renderData)
 	if err != nil {

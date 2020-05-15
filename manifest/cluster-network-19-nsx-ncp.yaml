@@ -5,7 +5,7 @@ metadata:
   name: nsx-ncp
   namespace: nsx-system
 spec:
-  replicas: 1
+  replicas: {{.NcpReplicas}}
   selector:
     matchLabels: {component: nsx-ncp, tier: nsx-networking, version: v1}
   template:
