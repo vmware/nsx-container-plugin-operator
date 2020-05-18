@@ -26,6 +26,8 @@ import (
 
 var log = logf.Log.WithName("controller_configmap")
 
+var appliedConfigMap *corev1.ConfigMap
+
 // Add creates a new ConfigMap Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager, status *statusmanager.StatusManager) error {
@@ -145,15 +147,35 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Compare with previous configurations
-	ncpConfigMap := &corev1.ConfigMap{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: ncptypes.NsxNamespace, Name: ncptypes.NcpConfigMapName}, ncpConfigMap)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Info("NCP ConfigMap does not exist")
+	if appliedConfigMap == nil {
+		ncpConfigMap := &corev1.ConfigMap{}
+		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: ncptypes.NsxNamespace, Name: ncptypes.NcpConfigMapName}, ncpConfigMap)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				log.Error(err, "Failed to get nsx-ncp ConfigMap")
+			}
+			ncpConfigMap = nil
 		}
-		ncpConfigMap = nil
+		agentConfigMap := &corev1.ConfigMap{}
+		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: ncptypes.NsxNamespace, Name: ncptypes.NodeAgentConfigMapName}, agentConfigMap)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				log.Error(err, "Failed to get nsx-node-agent ConfigMap")
+			}
+			agentConfigMap = nil
+		}
+		if ncpConfigMap != nil && agentConfigMap != nil {
+			appliedConfigMap = &corev1.ConfigMap{}
+			appliedConfigMap.Data = make(map[string]string)
+			err = GenerateOperatorConfigMap(appliedConfigMap, ncpConfigMap, agentConfigMap)
+			if err != nil {
+				r.status.SetDegraded(statusmanager.OperatorConfig, "InternalError",
+					fmt.Sprintf("Failed to generate operator ConfigMap: %v", err))
+				return reconcile.Result{}, err
+			}
+		}
 	}
-	ncpNeedChange, agentNeedChange, err := NeedApplyChange(instance, ncpConfigMap)
+	ncpNeedChange, agentNeedChange, err := NeedApplyChange(instance, appliedConfigMap)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -165,7 +187,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Check if new change is safe to apply
-	err = ValidateChangeIsSafe(instance, ncpConfigMap)
+	err = ValidateChangeIsSafe(instance, appliedConfigMap)
 	if err != nil {
 		log.Error(err, "New configuration is not safe to apply")
 		r.status.SetDegraded(statusmanager.OperatorConfig, "InvalidOperatorConfig",
@@ -202,7 +224,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Delete old NCP and nsx-node-agent pods
-	if ncpConfigMap != nil && ncpNeedChange {
+	if appliedConfigMap != nil && ncpNeedChange {
 		err = deleteExistingPods(r.client, ncptypes.NsxNcpDeploymentName)
 		if err != nil {
 			r.status.SetDegraded(statusmanager.OperatorConfig, "DeleteOldPodsError",
@@ -211,7 +233,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			return reconcile.Result{}, err
 		}
 	}
-	if ncpConfigMap != nil && agentNeedChange {
+	if appliedConfigMap != nil && agentNeedChange {
 		err = deleteExistingPods(r.client, ncptypes.NsxNodeAgentDsName)
 		if err != nil {
 			r.status.SetDegraded(statusmanager.OperatorConfig, "DeleteOldPodsError",
@@ -220,6 +242,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			return reconcile.Result{}, err
 		}
 	}
+	appliedConfigMap = instance
 
 	// TODO: Update network CRD status
 
