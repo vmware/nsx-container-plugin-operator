@@ -3,9 +3,9 @@ package configmap
 import (
 	"context"
 	"fmt"
-
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-network-operator/pkg/apply"
+	k8sutil "github.com/openshift/cluster-network-operator/pkg/util/k8s"
 	"github.com/pkg/errors"
 	"gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/controller/statusmanager"
 	ncptypes "gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/types"
@@ -244,11 +244,58 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 	appliedConfigMap = instance
 
-	// TODO: Update network CRD status
+	// Update network CRD status
+	err = updateNetworkStatus(networkConfig, r)
+	if err != nil {
+		r.status.SetDegraded(statusmanager.ClusterConfig, "UpdateNetworkStatusError",
+			fmt.Sprintf("Failed to update network status: %v", err))
+		return reconcile.Result{}, err
+	}
 
 	r.status.SetNotDegraded(statusmanager.ClusterConfig)
 	r.status.SetNotDegraded(statusmanager.OperatorConfig)
 	return reconcile.Result{}, nil
+}
+
+func updateNetworkStatus(networkConfig *configv1.Network, r *ReconcileConfigMap) error {
+	status := getNetworkCRD(networkConfig)
+	// Render information
+	networkConfig.Status = status
+	data, err := k8sutil.ToUnstructured(networkConfig)
+	if err != nil {
+		log.Error(err, "Failed to render configurations")
+		return err
+	}
+
+	if data != nil {
+		if err := apply.ApplyObject(context.TODO(), r.client, data); err != nil {
+			log.Error(err, fmt.Sprintf("Could not apply (%s) %s/%s", data.GroupVersionKind(),
+				data.GetNamespace(), data.GetName()))
+			return err
+		}else {
+			log.Error(err,"Retrieved data for updating network status is empty.")
+			return err}
+		}
+	log.Info("Successfully updated Network Status")
+	return nil
+}
+
+func getNetworkCRD(networkConfig *configv1.Network) configv1.NetworkStatus {
+	// Values extracted from spec are serviceNetwork and clusterNetworkCIDR.
+	// HostPrefix is ignored.
+	status := configv1.NetworkStatus{}
+	for _, snet := range networkConfig.Spec.ServiceNetwork {
+		status.ServiceNetwork = append(status.ServiceNetwork, snet)
+	}
+
+	for _, cnet := range networkConfig.Spec.ClusterNetwork {
+		status.ClusterNetwork = append(status.ClusterNetwork,
+			configv1.ClusterNetworkEntry{
+				CIDR:       cnet.CIDR,
+			})
+	}
+	status.NetworkType = networkConfig.Spec.NetworkType
+	return status
 }
 
 func deleteExistingPods(c client.Client, component string) error {
