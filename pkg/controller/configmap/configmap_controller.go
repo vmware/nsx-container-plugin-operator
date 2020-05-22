@@ -3,7 +3,6 @@ package configmap
 import (
 	"context"
 	"fmt"
-	"time"
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-network-operator/pkg/apply"
@@ -27,18 +26,16 @@ import (
 
 var log = logf.Log.WithName("controller_configmap")
 
-const resyncPeriod time.Duration = 30 * time.Second
-
 // Add creates a new ConfigMap Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager, status *statusmanager.StatusManager) error {
-	return add(mgr, newReconciler(mgr))
+	return add(mgr, newReconciler(mgr, status))
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager) reconcile.Reconciler {
+func newReconciler(mgr manager.Manager, status *statusmanager.StatusManager) reconcile.Reconciler {
 	configv1.Install(mgr.GetScheme())
-	return &ReconcileConfigMap{client: mgr.GetClient(), scheme: mgr.GetScheme()}
+	return &ReconcileConfigMap{client: mgr.GetClient(), scheme: mgr.GetScheme(), status: status}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -72,6 +69,7 @@ type ReconcileConfigMap struct {
 	// that reads objects from the cache and writes to the apiserver
 	client client.Client
 	scheme *runtime.Scheme
+	status *statusmanager.StatusManager
 }
 
 // Reconcile reads that state of the cluster for a ConfigMap object and makes changes based on the state read
@@ -101,14 +99,17 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	err := r.client.Get(context.TODO(), instanceName, instance)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			// TODO: Set operator Degraded status
 			// Request object not found, could have been deleted after reconcile request.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
-			log.Info("NCP operator ConfigMap is not found")
+			log.Info(fmt.Sprintf("%s ConfigMap is not found", ncptypes.ConfigMapName))
+			r.status.SetDegraded(statusmanager.OperatorConfig, "NoOperatorConfig",
+				fmt.Sprintf("%s ConfigMap is not found", ncptypes.ConfigMapName))
 			return reconcile.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
+		r.status.SetDegraded(statusmanager.OperatorConfig, "NoOperatorConfig",
+			fmt.Sprintf("Failed to get operator ConfigMap: %v", err))
 		return reconcile.Result{}, err
 	}
 
@@ -117,26 +118,30 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	err = r.client.Get(context.TODO(), types.NamespacedName{Name: ncptypes.NetworkCRDName}, networkConfig)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			// TODO: Set operator Degraded status
 			// Request object not found, could have been deleted after reconcile request.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
 			log.Info("Cluster network CRD is not found")
+			r.status.SetDegraded(statusmanager.ClusterConfig, "NoClusterConfig", "Cluster network CRD is not found")
 			return reconcile.Result{}, nil
 		}
+		r.status.SetDegraded(statusmanager.ClusterConfig, "NoClusterConfig",
+			fmt.Sprintf("Failed to get cluster network CRD: %v", err))
 		return reconcile.Result{}, err
 	}
 
 	// Fill default configurations
 	if err = FillDefaults(instance, &networkConfig.Spec); err != nil {
-		// TODO: Set operator Degraded status
-		return reconcile.Result{}, nil
+		r.status.SetDegraded(statusmanager.OperatorConfig, "FillDefaultsError",
+			fmt.Sprintf("Failed to fill default configurations: %v", err))
+		return reconcile.Result{}, err
 	}
 
 	// Validate configurations
 	if err = Validate(instance, &networkConfig.Spec); err != nil {
-		// TODO: Set operator Degraded status
-		return reconcile.Result{RequeueAfter: resyncPeriod}, err
+		r.status.SetDegraded(statusmanager.OperatorConfig, "InvalidOperatorConfig",
+			fmt.Sprintf("The operator configuration is invalid: %v", err))
+		return reconcile.Result{}, err
 	}
 
 	// Compare with previous configurations
@@ -154,6 +159,8 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 	if !ncpNeedChange && !agentNeedChange {
 		log.Info("no new configuration needs to apply")
+		r.status.SetNotDegraded(statusmanager.ClusterConfig)
+		r.status.SetNotDegraded(statusmanager.OperatorConfig)
 		return reconcile.Result{}, nil
 	}
 
@@ -161,6 +168,8 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	err = ValidateChangeIsSafe(instance, ncpConfigMap)
 	if err != nil {
 		log.Error(err, "New configuration is not safe to apply")
+		r.status.SetDegraded(statusmanager.OperatorConfig, "InvalidOperatorConfig",
+			fmt.Sprintf("The operator configuration is not safe to apply: %v", err))
 		return reconcile.Result{}, err
 	}
 
@@ -168,11 +177,10 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	objs, err := Render(instance)
 	if err != nil {
 		log.Error(err, "Failed to render configurations")
-		// TODO: Set operator Degraded status
+		r.status.SetDegraded(statusmanager.OperatorConfig, "RenderConfigError",
+			fmt.Sprintf("Failed to render operator configuration: %v", err))
 		return reconcile.Result{}, err
 	}
-
-	// TODO: Set up the Pod reconciler before we start creating DaemonSets/Deployments
 
 	// Apply objects to K8s cluster
 	for _, obj := range objs {
@@ -180,13 +188,15 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		err = controllerutil.SetControllerReference(networkConfig, obj, r.scheme)
 		if err != nil {
 			err = errors.Wrapf(err, "could not set reference for (%s) %s/%s", obj.GroupVersionKind(), obj.GetNamespace(), obj.GetName())
-			// TODO: Set operator Degraded status
+			r.status.SetDegraded(statusmanager.OperatorConfig, "ApplyObjectsError",
+				fmt.Sprintf("Failed to apply objects: %v", err))
 			return reconcile.Result{}, err
 		}
 
 		if err = apply.ApplyObject(context.TODO(), r.client, obj); err != nil {
 			log.Error(err, fmt.Sprintf("could not apply (%s) %s/%s", obj.GroupVersionKind(), obj.GetNamespace(), obj.GetName()))
-			// TODO: Set operator Degraded status
+			r.status.SetDegraded(statusmanager.OperatorConfig, "ApplyOperatorConfig",
+				fmt.Sprintf("Failed to apply operator configuration: %v", err))
 			return reconcile.Result{}, err
 		}
 	}
@@ -195,18 +205,26 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	if ncpConfigMap != nil && ncpNeedChange {
 		err = deleteExistingPods(r.client, ncptypes.NsxNcpDeploymentName)
 		if err != nil {
+			r.status.SetDegraded(statusmanager.OperatorConfig, "DeleteOldPodsError",
+				fmt.Sprintf("Deployment %s is not using the latest configuration updates because: %v",
+					ncptypes.NsxNcpDeploymentName, err))
 			return reconcile.Result{}, err
 		}
 	}
 	if ncpConfigMap != nil && agentNeedChange {
 		err = deleteExistingPods(r.client, ncptypes.NsxNodeAgentDsName)
 		if err != nil {
+			r.status.SetDegraded(statusmanager.OperatorConfig, "DeleteOldPodsError",
+				fmt.Sprintf("DaemonSet %s is not using the latest configuration updates because: %v",
+					ncptypes.NsxNodeAgentDsName, err))
 			return reconcile.Result{}, err
 		}
 	}
 
 	// TODO: Update network CRD status
 
+	r.status.SetNotDegraded(statusmanager.ClusterConfig)
+	r.status.SetNotDegraded(statusmanager.OperatorConfig)
 	return reconcile.Result{}, nil
 }
 
