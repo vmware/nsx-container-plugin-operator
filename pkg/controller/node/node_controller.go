@@ -42,12 +42,16 @@ var log = logf.Log.WithName("controller_node")
 // Add creates a new Node Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager, status *statusmanager.StatusManager) error {
-	return add(mgr, newReconciler(mgr))
+	return add(mgr, newReconciler(mgr, status))
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileNode{client: mgr.GetClient(), scheme: mgr.GetScheme()}
+func newReconciler(mgr manager.Manager, status *statusmanager.StatusManager) reconcile.Reconciler {
+	return &ReconcileNode{
+		client: mgr.GetClient(),
+		scheme: mgr.GetScheme(),
+		status: status,
+	}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -76,6 +80,7 @@ type ReconcileNode struct {
 	// that reads objects from the cache and writes to the apiserver
 	client client.Client
 	scheme *runtime.Scheme
+	status *statusmanager.StatusManager
 }
 
 type NsxConfig struct {
@@ -85,7 +90,8 @@ type NsxConfig struct {
 	Cluster               string
 }
 
-var cachedNodeSet = map[string]string{}
+
+var cachedNodeSet = map[string](*statusmanager.NodeStatus){}
 
 func searchSegmentPortByNodeName(nsxConfig *NsxConfig, nodeName string) (*model.SegmentPort, error) {
 	log.Info(fmt.Sprintf("Searching segment port for node %s", nodeName))
@@ -173,6 +179,21 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger.Info("Reconciling Node")
 
+	// When cachedNodeSet is empty, it's possible that the node controller just starts. The reconciler should know the whole node set to invoke status.setNotDegraded so we list the nodes
+	if len(cachedNodeSet) == 0 {
+		nodes := corev1.NodeList{}
+		err := r.client.List(context.TODO(), &nodes)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		for _, node := range(nodes.Items) {
+			cachedNodeSet[node.ObjectMeta.Name] = &statusmanager.NodeStatus{
+				Success: false,
+				Reason:  fmt.Sprintf("Node %s has not yet been processed", node.ObjectMeta.Name),
+			}
+		}
+	}
+
 	nodeName := request.Name
 	// Fetch the Node instance
 	instance := &corev1.Node{}
@@ -183,6 +204,11 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 			delete(cachedNodeSet, nodeName)
 			return reconcile.Result{}, nil
 		}
+		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
+			Success: false,
+			Reason:  fmt.Sprintf("Failed to get the node %s: %v", nodeName, err),
+		}
+		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
 	}
 
@@ -198,11 +224,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 			break
 		}
 	}
-	if err != nil {
-		log.Error(err, "Failed to get the node info")
-		return reconcile.Result{}, err
-	}
-	if cachedNodeSet[nodeName] == nodeAddress {
+	if cachedNodeSet[nodeName] != nil && cachedNodeSet[nodeName].Address == nodeAddress && cachedNodeSet[nodeName].Success {
 		// TODO: consider the corner case that node port is changed but the address is not changed
 		reqLogger.Info("Skip reconcile: node was processed")
 		return reconcile.Result{}, nil
@@ -210,6 +232,12 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 
 	nsxConfig, err := r.createNsxConfig()
 	if err != nil {
+		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
+			Address: nodeAddress,
+			Success: false,
+			Reason:  fmt.Sprintf("Failed to create NSX config for node %s: %v", nodeName, err),
+		}
+		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
 	}
 
@@ -217,9 +245,15 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	reqLogger.Info("Searching the logical port for node")
 	segmentPort, err := searchSegmentPortByNodeName(nsxConfig, nodeName)
 	if err != nil {
+		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
+			Address: nodeAddress,
+			Success: false,
+			Reason:  fmt.Sprintf("Error while searching segment port for node %s: %v", nodeName, err),
+		}
+		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
 	}
-	reqLogger.Info("Got the segment port", "segmenetPort.Id", *segmentPort.Id, "segmentPort.Path", *segmentPort.Path, "cluster", cluster)
+	reqLogger.Info("Got the segment port", "segmentPort.Id", *segmentPort.Id, "segmentPort.Path", *segmentPort.Path, "cluster", cluster)
 
 	// TODO: find a way to fill the segmentPort by using the return value from searchSegmentPortByNodeName then we won't need to invoke the Get API again.
 	sl := strings.Split(*segmentPort.Path, "/")
@@ -227,6 +261,12 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	portsClient := segments.NewDefaultPortsClient(nsxConfig.PolicyConnector)
 	*segmentPort, err = portsClient.Get(segmentId, *segmentPort.Id)
 	if err != nil {
+		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
+			Address: nodeAddress,
+			Success: false,
+			Reason:  fmt.Sprintf("Failed to get segment port for node %s: %v", nodeName, err),
+		}
+		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
 	}
 
@@ -243,7 +283,12 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	}
 	if foundNodeTag == true && foundClusterTag == true {
 		reqLogger.Info("Skip reconcile: node port was tagged")
-		cachedNodeSet[nodeName] = nodeAddress
+		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
+			Address: nodeAddress,
+			Success: true,
+			Reason:  "",
+		}
+		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
 	}
 	reqLogger.Info("Updating node tag for segment port", "segmentPort.Id", segmentPort.Id)
@@ -257,9 +302,20 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	}
 	_, err = portsClient.Update(segmentId, *segmentPort.Id, *segmentPort)
 	if err != nil {
+		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
+			Address: nodeAddress,
+			Success: false,
+			Reason:  fmt.Sprintf("Failed to update segment port %s for node %s: %v", segmentPort.Path, nodeName, err),
+		}
+		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
 	}
-	cachedNodeSet[nodeName] = nodeAddress
+	cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
+		Address: nodeAddress,
+		Success: true,
+		Reason:  "",
+	}
+	r.status.SetFromNodes(cachedNodeSet)
 	reqLogger.Info("Successfully updated tags on segment port", "segmentPort.Id", segmentPort.Id)
 	return reconcile.Result{}, nil
 }
