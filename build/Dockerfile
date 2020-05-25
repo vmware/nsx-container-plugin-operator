@@ -17,6 +17,7 @@ ENV OPERATOR=/usr/local/bin/nsx-ncp-operator \
 COPY --from=builder /nsx-ncp-operator/build/bin/nsx-ncp-operator ${OPERATOR}
 
 COPY build/bin /usr/local/bin
+COPY manifest /manifest
 RUN  /usr/local/bin/user_setup
 
 ENTRYPOINT ["/usr/local/bin/entrypoint"]

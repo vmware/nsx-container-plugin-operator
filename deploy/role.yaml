@@ -3,57 +3,48 @@ apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: nsx-ncp-operator
 rules:
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  - configmaps
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-    - ""
-  resources:
-    - nodes
-  verbs:
-    - get
-    - list
-    - watch
-- apiGroups:
-  - apps
-  resources:
-  - deployments
-  - daemonsets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - config.openshift.io
-  resources:
-  - networks
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - config.openshift.io
-  resources:
-  - clusteroperators
-  - clusteroperators/status
-  verbs:
-  - create
-  - get
-  - list
-  - patch
-  - update
-  - watch
+- apiGroups: ['']
+  resources: [pods, configmaps, namespaces, serviceaccounts, secrets]
+  verbs: [create, get, list, patch, delete, update, watch]
+- apiGroups: ['', config.openshift.io]
+  resources: [nodes, networks]
+  verbs: [get, list, watch]
+- apiGroups: [apps]
+  resources: [deployments, daemonsets]
+  verbs: [create, get, list, patch, delete, update, watch]
+- apiGroups: [config.openshift.io, apiextensions.k8s.io]
+  resources: [clusteroperators, clusteroperators/status, customresourcedefinitions]
+  verbs: [create, get, list, patch, update, watch]
+- apiGroups: [rbac.authorization.k8s.io]
+  resources: [clusterroles, clusterrolebindings]
+  verbs: [create, get, list, patch, update, watch]
+# Required by nsx-node-agent
+- apiGroups: ['']
+  resources: [endpoints, services]
+  verbs: [get, list, watch]
+# Required by nsx-ncp
+- apiGroups: ['', extensions, networking.k8s.io, config.openshift.io]
+  resources: [deployments, endpoints, pods/log, nodes, replicationcontrollers, secrets,
+    routes, network, networks]
+  verbs: [get, watch, list]
+- apiGroups: [route.openshift.io]
+  resources: [routes]
+  verbs: [get, watch, list]
+- apiGroups: ['', extensions, networking.k8s.io]
+  resources: [namespaces, ingresses, services, pods, networkpolicies, routes]
+  verbs: [get, watch, list, update, patch]
+- apiGroups: [nsx.vmware.com]
+  resources: [nsxerrors, nsxlocks, ncpconfigs]
+  verbs: [create, get, list, patch, delete, update]
+- apiGroups: ['', extensions]
+  resources: [ingresses/status, services/status, routes/status]
+  verbs: [replace, update, patch]
+- apiGroups: [config.openshift.io]
+  resources: [networks]
+  verbs: [patch]
+- apiGroups: [route.openshift.io]
+  resources: [routes, routes/status]
+  verbs: [patch, update]
+- apiGroups: [k8s.cni.cncf.io]
+  resources: [network-attachment-definitions]
+  verbs: [get, list, watch]
