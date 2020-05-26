@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: nsx-ncp-operator-config
-  namespace: nsx-ncp-operator
+  namespace: nsx-system-operator
 data:
   ncp.ini: |
 
