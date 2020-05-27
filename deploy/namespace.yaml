@@ -1,4 +1,5 @@
 apiVersion: v1
 kind: Namespace
 metadata:
+  labels: {name: nsx-system-operator, openshift.io/run-level: '0'}
   name: nsx-system-operator
