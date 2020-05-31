@@ -15,6 +15,11 @@ spec:
     spec:
       hostNetwork: true
       serviceAccountName: nsx-ncp-operator
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+      - effect: NoSchedule
+        key: node.kubernetes.io/not-ready
       containers:
         - name: nsx-ncp-operator
           # Replace this with the built image name
