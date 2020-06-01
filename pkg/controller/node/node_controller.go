@@ -18,6 +18,7 @@ import (
 	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/infra/segments"
 	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/model"
 	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/search"
+	"gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/controller/sharedinfo"
 	"gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/controller/statusmanager"
 	operatortypes "gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/types"
 	"gopkg.in/ini.v1"
@@ -43,7 +44,7 @@ var log = logf.Log.WithName("controller_node")
 
 // Add creates a new Node Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
-func Add(mgr manager.Manager, status *statusmanager.StatusManager) error {
+func Add(mgr manager.Manager, status *statusmanager.StatusManager, _ *sharedinfo.SharedInfo) error {
 	return add(mgr, newReconciler(mgr, status))
 }
 

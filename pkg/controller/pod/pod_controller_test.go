@@ -1,14 +1,21 @@
 package pod
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
 	configv1 "github.com/openshift/api/config/v1"
+	"gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/controller/sharedinfo"
 	"gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/controller/statusmanager"
+	ncptypes "gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/types"
 	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
+	k8sclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -67,14 +74,19 @@ func getTestReconcilePod() *ReconcilePod {
 	client := fake.NewFakeClient()
 	mapper := &statusmanager.FakeRESTMapper{}
 	status := statusmanager.New(client, mapper, "testing", "1.2.3")
+	sharedInfo := sharedinfo.New()
+	sharedInfo.NetworkConfig = &configv1.Network{}
 
 	nsxNcpResources := mergeAndGetNsxNcpResources(
 		getNsxNcpDs(getNsxSystemNsName()),
 		getNsxNcpDeployments(getNsxSystemNsName()))
 	// Create a ReconcilePod object with the scheme and fake client.
 	return &ReconcilePod{
+		client:          client,
 		status:          status,
-		nsxNcpResources: nsxNcpResources}
+		nsxNcpResources: nsxNcpResources,
+		sharedInfo:      sharedInfo,
+	}
 }
 
 func (r *ReconcilePod) testRequestContainsNsxNcpResource(t *testing.T) {
@@ -136,6 +148,13 @@ func (r *ReconcilePod) testReconcileOnWatchedResource(t *testing.T) {
 			Namespace: "nsx-system",
 		},
 	}
+	ncpDeployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nsx-ncp",
+			Namespace: "nsx-system",
+		},
+	}
+	r.client.Create(context.TODO(), ncpDeployment)
 	res, err := r.Reconcile(req)
 	if err != nil {
 		t.Fatalf("reconcile: (%v)", err)
@@ -143,10 +162,76 @@ func (r *ReconcilePod) testReconcileOnWatchedResource(t *testing.T) {
 	if res.RequeueAfter != ResyncPeriod {
 		t.Fatalf("reconcile should requeue the request after %v", ResyncPeriod)
 	}
+	r.client.Delete(context.TODO(), ncpDeployment)
+}
+
+func (r *ReconcilePod) testReconcileOnWatchedResourceWhenDeleted(t *testing.T) {
+	originalSetControllerReferenceFunc := SetControllerReference
+	originalApplyObject := ApplyObject
+	defer func() {
+		SetControllerReference = originalSetControllerReferenceFunc
+		ApplyObject = originalApplyObject
+	}()
+
+	req := reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "nsx-ncp",
+			Namespace: "nsx-system",
+		},
+	}
+	ncpDeployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nsx-ncp",
+			Namespace: "nsx-system",
+		},
+	}
+	SetControllerReference = func(owner, controlled metav1.Object, scheme *runtime.Scheme) error {
+		return nil
+	}
+	ApplyObject = func(ctx context.Context, client k8sclient.Client, obj *unstructured.Unstructured) error {
+		r.client.Create(context.TODO(), ncpDeployment)
+		return nil
+	}
+
+	// Do not create nsx-ncp deployment so that it assumes it's deleted
+	res, err := r.Reconcile(req)
+	if err != nil {
+		t.Fatalf("reconcile: (%v)", err)
+	}
+	if res.RequeueAfter != ResyncPeriod {
+		t.Fatalf("reconcile should requeue the request after %v", ResyncPeriod)
+	}
+
+	// Validate that reconcile recreated the deployment
+	instance := &appsv1.Deployment{}
+	instanceDetails := types.NamespacedName{
+		Namespace: ncptypes.NsxNamespace,
+		Name:      ncptypes.NsxNcpDeploymentName,
+	}
+	err = r.client.Get(context.TODO(), instanceDetails, instance)
+	if err != nil {
+		t.Fatalf(
+			"reconcile failed to/did not recreate ncp deployment: (%v)", err)
+	}
+
+	r.client.Delete(context.TODO(), ncpDeployment)
 }
 
 func TestPodControllerReconcile(t *testing.T) {
 	r := getTestReconcilePod()
 	r.testReconcileOnNotWatchedResource(t)
 	r.testReconcileOnWatchedResource(t)
+	r.testReconcileOnWatchedResourceWhenDeleted(t)
+}
+
+func TestPodController_identifyAndGetInstance(t *testing.T) {
+	if !reflect.DeepEqual(identifyAndGetInstance(ncptypes.NsxNcpDeploymentName), &appsv1.Deployment{}) {
+		t.Fatalf("nsx-ncp instance must be a Deployment")
+	}
+	if !reflect.DeepEqual(identifyAndGetInstance(ncptypes.NsxNcpBootstrapDsName), &appsv1.DaemonSet{}) {
+		t.Fatalf("nsx-ncp instance must be a DaemonSet")
+	}
+	if !reflect.DeepEqual(identifyAndGetInstance(ncptypes.NsxNodeAgentDsName), &appsv1.DaemonSet{}) {
+		t.Fatalf("nsx-ncp instance must be a DaemonSet")
+	}
 }

@@ -7,11 +7,13 @@ import (
 	"github.com/openshift/cluster-network-operator/pkg/apply"
 	k8sutil "github.com/openshift/cluster-network-operator/pkg/util/k8s"
 	"github.com/pkg/errors"
+	"gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/controller/sharedinfo"
 	"gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/controller/statusmanager"
 	ncptypes "gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/types"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -30,14 +32,19 @@ var appliedConfigMap *corev1.ConfigMap
 
 // Add creates a new ConfigMap Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
-func Add(mgr manager.Manager, status *statusmanager.StatusManager) error {
-	return add(mgr, newReconciler(mgr, status))
+func Add(mgr manager.Manager, status *statusmanager.StatusManager, shared_info *sharedinfo.SharedInfo) error {
+	return add(mgr, newReconciler(mgr, status, shared_info))
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager, status *statusmanager.StatusManager) reconcile.Reconciler {
+func newReconciler(mgr manager.Manager, status *statusmanager.StatusManager, shared_info *sharedinfo.SharedInfo) reconcile.Reconciler {
 	configv1.Install(mgr.GetScheme())
-	return &ReconcileConfigMap{client: mgr.GetClient(), scheme: mgr.GetScheme(), status: status}
+	return &ReconcileConfigMap{
+		client:      mgr.GetClient(),
+		scheme:      mgr.GetScheme(),
+		status:      status,
+		shared_info: shared_info,
+	}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -69,9 +76,10 @@ var _ reconcile.Reconciler = &ReconcileConfigMap{}
 type ReconcileConfigMap struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
-	client client.Client
-	scheme *runtime.Scheme
-	status *statusmanager.StatusManager
+	client      client.Client
+	scheme      *runtime.Scheme
+	status      *statusmanager.StatusManager
+	shared_info *sharedinfo.SharedInfo
 }
 
 // Reconcile reads that state of the cluster for a ConfigMap object and makes changes based on the state read
@@ -204,6 +212,9 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, err
 	}
 
+	r.updateSharedInfoWithNsxNcpResources(objs)
+	r.shared_info.NetworkConfig = networkConfig
+
 	// Apply objects to K8s cluster
 	for _, obj := range objs {
 		// Mark the object to be GC'd if the owner is deleted
@@ -310,4 +321,17 @@ func deleteExistingPods(c client.Client, component string) error {
 	}
 	log.Info(fmt.Sprintf("Successfully deleted pod %s", component))
 	return nil
+}
+
+func (r *ReconcileConfigMap) updateSharedInfoWithNsxNcpResources(objs []*unstructured.Unstructured) {
+	for _, obj := range objs {
+		if obj.GetName() == ncptypes.NsxNodeAgentDsName {
+			r.shared_info.NsxNodeAgentDsSpec = obj.DeepCopy()
+		} else if obj.GetName() == ncptypes.NsxNcpBootstrapDsName {
+			r.shared_info.NsxNcpBootstrapDsSpec = obj.DeepCopy()
+		} else if obj.GetName() == ncptypes.NsxNcpDeploymentName {
+			r.shared_info.NsxNcpDeploymentSpec = obj.DeepCopy()
+		}
+	}
+	log.Info("Updated shared info with Nsx Ncp Resources")
 }
