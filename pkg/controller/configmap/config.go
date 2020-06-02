@@ -32,7 +32,7 @@ func FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error
 		return err
 	}
 	// We support only policy API, single tier topo on openshift4
-	appendErrorIfNotNil(&errs, fillDefault(cfg, "coe", "adaptor", "openshift", true))
+	appendErrorIfNotNil(&errs, fillDefault(cfg, "coe", "adaptor", "openshift4", true))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "policy_nsxapi", "True", true))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "single_tier_topology", "True", true))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "coe", "enable_snat", "True", false))
