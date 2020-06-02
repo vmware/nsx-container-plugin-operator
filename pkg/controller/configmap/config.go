@@ -44,7 +44,7 @@ func FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error
 	appendErrorIfNotNil(&errs, err)
 
 	if len(errs) > 0 {
-		return errors.Errorf("failed to fill defaults: %v", errs)
+		return errors.Errorf("failed to fill defaults: %q", errs)
 	}
 	return nil
 }
@@ -87,7 +87,7 @@ func Validate(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error {
 	errs = append(errs, validateClusterNetwork(spec)...)
 
 	if len(errs) > 0 {
-		return errors.Errorf("invalid configuration: %v", errs)
+		return errors.Errorf("invalid configuration: %q", errs)
 	}
 	return nil
 }
@@ -111,7 +111,6 @@ func validateConfigMap(configmap *corev1.ConfigMap) []error {
 		errs = append(errs, errors.Wrapf(err, "failed to load ConfigMap"))
 		return errs
 	}
-
 	appendErrorIfNotNil(&errs, validateConfig(cfg, "coe", "cluster"))
 	appendErrorIfNotNil(&errs, validateConfig(cfg, "nsx_v3", "nsx_api_managers"))
 	if cfg.Section("coe").Key("enable_snat").Value() == "True" {
