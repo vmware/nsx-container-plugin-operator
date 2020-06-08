@@ -9,8 +9,10 @@ import (
 	"net/http"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"github.com/vmware/vsphere-automation-sdk-go/runtime/core"
 	"github.com/vmware/vsphere-automation-sdk-go/runtime/data"
+	vspherelog "github.com/vmware/vsphere-automation-sdk-go/runtime/log"
 	policyclient "github.com/vmware/vsphere-automation-sdk-go/runtime/protocol/client"
 	"github.com/vmware/vsphere-automation-sdk-go/runtime/security"
 	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/infra/segments"
@@ -68,6 +70,11 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
+	// Set log level for vsphere-automation-sdk-go
+	logger := logrus.New()
+	logger.SetLevel(logrus.InfoLevel)
+	vspherelog.SetLogger(logger)
+
 	return nil
 }
 
@@ -89,7 +96,6 @@ type NsxConfig struct {
 	PolicyConnector       *policyclient.RestConnector
 	Cluster               string
 }
-
 
 var cachedNodeSet = map[string](*statusmanager.NodeStatus){}
 
@@ -186,7 +192,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		for _, node := range(nodes.Items) {
+		for _, node := range nodes.Items {
 			cachedNodeSet[node.ObjectMeta.Name] = &statusmanager.NodeStatus{
 				Success: false,
 				Reason:  fmt.Sprintf("Node %s has not yet been processed", node.ObjectMeta.Name),
