@@ -15,4 +15,5 @@ const (
 	NsxNodeAgentDsName          string = "nsx-node-agent"
 	NsxNcpBootstrapDsName       string = "nsx-ncp-bootstrap"
 	NsxNcpDeploymentName        string = "nsx-ncp"
+	NetworkType                 string = "ncp"
 )

@@ -128,7 +128,7 @@ func validateConfigMap(configmap *corev1.ConfigMap) []error {
 
 func validateClusterNetwork(spec *configv1.NetworkSpec) []error {
 	errs := []error{}
-	if strings.ToLower(spec.NetworkType) != "nsx" {
+	if strings.ToLower(spec.NetworkType) != ncptypes.NetworkType {
 		appendErrorIfNotNil(&errs, errors.Errorf("network type %s is not nsx", spec.NetworkType))
 		return errs
 	}

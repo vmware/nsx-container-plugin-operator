@@ -48,7 +48,7 @@ func TestFillDefaults(t *testing.T) {
 		t.Fatalf("failed to fill default config")
 	}
 	cfg, err := ini.Load([]byte((*data)[ncptypes.ConfigMapDataKey]))
-	assert.Equal(t, "openshift", cfg.Section("coe").Key("adaptor").Value())
+	assert.Equal(t, "openshift4", cfg.Section("coe").Key("adaptor").Value())
 	assert.Equal(t, "True", cfg.Section("nsx_v3").Key("policy_nsxapi").Value())
 	assert.Equal(t, "True", cfg.Section("nsx_v3").Key("single_tier_topology").Value())
 	assert.Equal(t, "True", cfg.Section("coe").Key("enable_snat").Value())
@@ -137,7 +137,7 @@ func TestValidateClusterNetwork(t *testing.T) {
 	errs := validateClusterNetwork(mockNetworkSpec)
 	assert.Equal(t, 1, len(errs))
 
-	mockNetworkSpec.NetworkType = "nsx"
+	mockNetworkSpec.NetworkType = "ncp"
 	errs = validateClusterNetwork(mockNetworkSpec)
 	assert.Equal(t, 1, len(errs))
 
