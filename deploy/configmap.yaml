@@ -622,3 +622,13 @@ data:
     #ovs_operation_timeout = 5
 
 
+    [operator]
+
+    # The default certificate for HTTPS load balancing.
+    # Must be specified along with lb_priv_key option.
+    # Operator will create lb-secret for NCP based on these two options.
+    #lb_default_cert = <None>
+
+    # The private key for default certificate for HTTPS load balancing.
+    # Must be specified along with lb_default_cert option.
+    #lb_priv_key = <None>

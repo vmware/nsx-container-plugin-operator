@@ -16,4 +16,6 @@ const (
 	NsxNcpBootstrapDsName       string = "nsx-ncp-bootstrap"
 	NsxNcpDeploymentName        string = "nsx-ncp"
 	NetworkType                 string = "ncp"
+	LbCertRenderKey             string = "LbCert"
+	LbKeyRenderKey              string = "LbKey"
 )

@@ -20,8 +20,9 @@ require (
 	github.com/vmware/vsphere-automation-sdk-go/services/nsxt v0.3.0
 	gopkg.in/ini.v1 v1.51.0
 	k8s.io/api v0.18.2
-	k8s.io/apimachinery v0.18.2
+	k8s.io/apimachinery v0.18.3
 	k8s.io/client-go v12.0.0+incompatible
+	k8s.io/kube-proxy v0.18.3 // indirect
 	k8s.io/kubectl v0.17.4
 	sigs.k8s.io/controller-runtime v0.5.2
 	sigs.k8s.io/structured-merge-diff v1.0.2 // indirect

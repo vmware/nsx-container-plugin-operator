@@ -183,6 +183,17 @@ func Render(configmap *corev1.ConfigMap) ([]*unstructured.Unstructured, error) {
 		renderData.Data[ncptypes.NcpReplicasKey] = 1
 	}
 
+	// Set LB secret
+	lbCert := ""
+	lbKey := ""
+	sec, err := cfg.GetSection("operator")
+	if err == nil && sec.HasKey("lb_default_cert") && sec.HasKey("lb_priv_key") {
+		lbCert = sec.Key("lb_default_cert").Value()
+		lbKey = sec.Key("lb_priv_key").Value()
+	}
+	renderData.Data[ncptypes.LbCertRenderKey] = lbCert
+	renderData.Data[ncptypes.LbKeyRenderKey] = lbKey
+
 	manifests, err := render.RenderDir(manifestDir, &renderData)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to render manifests")
@@ -235,6 +246,9 @@ func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap)
 	// Check whether different sections impact on NCP and nsx-node-agent
 	ncpNeedChange, agentNeedChange = false, false
 	for _, sec := range diffSecs {
+		if !ncpNeedChange && sec == "operator" {
+			ncpNeedChange = true
+		}
 		if !ncpNeedChange && inSlice(sec, ncptypes.NcpSections) {
 			ncpNeedChange = true
 		}
