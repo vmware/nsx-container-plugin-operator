@@ -28,7 +28,7 @@ rules:
 # Required by nsx-ncp
 - apiGroups: ['', extensions, networking.k8s.io, config.openshift.io]
   resources: [deployments, endpoints, pods/log, nodes, replicationcontrollers, secrets,
-    routes, network, networks]
+    ingressclasses, routes, network, networks]
   verbs: [get, watch, list]
 - apiGroups: [route.openshift.io]
   resources: [routes]
@@ -39,7 +39,7 @@ rules:
 - apiGroups: [nsx.vmware.com]
   resources: [nsxerrors, nsxlocks, ncpconfigs]
   verbs: [create, get, list, patch, delete, update]
-- apiGroups: ['', extensions]
+- apiGroups: ['', extensions, networking.k8s.io]
   resources: [ingresses/status, services/status, routes/status]
   verbs: [replace, update, patch]
 - apiGroups: [config.openshift.io]

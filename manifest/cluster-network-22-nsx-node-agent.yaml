@@ -37,6 +37,7 @@ spec:
         - {mountPath: /var/run/nsx-ujo, name: var-run-ujo}
         - {mountPath: /host/var/run/netns, mountPropagation: HostToContainer, name: netns}
         - {mountPath: /host/proc, name: proc, readOnly: true}
+        - {mountPath: /var/lib/kubelet/device-plugins/, name: device-plugins, readOnly: true}
       - command: [start_kube_proxy]
         env:
         - name: POD_NAME
@@ -108,6 +109,8 @@ spec:
         name: netns
       - hostPath: {path: /proc}
         name: proc
+      - hostPath: {path: /var/lib/kubelet/device-plugins/}
+        name: device-plugins
       - hostPath: {path: /sys}
         name: host-sys
       - hostPath: {path: /lib/modules}

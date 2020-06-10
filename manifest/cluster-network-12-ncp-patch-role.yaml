@@ -8,7 +8,7 @@ rules:
 - apiGroups: [nsx.vmware.com]
   resources: [nsxerrors, nsxlocks, ncpconfigs]
   verbs: [create, get, list, patch, delete, update]
-- apiGroups: ['', extensions]
+- apiGroups: ['', extensions, networking.k8s.io]
   resources: [ingresses/status, services/status, routes/status]
   verbs: [replace, update, patch]
 - apiGroups: [config.openshift.io]

@@ -4,7 +4,7 @@ metadata: {name: ncp-cluster-role}
 rules:
 - apiGroups: ['', extensions, networking.k8s.io, config.openshift.io]
   resources: [deployments, endpoints, pods/log, nodes, replicationcontrollers, secrets,
-    routes, network, networks]
+    ingressclasses, routes, network, networks]
   verbs: [get, watch, list]
 - apiGroups: [route.openshift.io]
   resources: [routes]

@@ -231,6 +231,11 @@ data:
     # Choices: <None> source_ip
     #l4_persistence = <None>
 
+    # Option to set distributed load balancer source ip persistence option,
+    # only available when use_native_dlb = True
+    # Choices: <None> source_ip
+    #dlb_l4_persistence = <None>
+
 
 
 
@@ -426,13 +431,17 @@ data:
     #segment_gc_interval = 600
 
     # Determines the mode NCP limits rate when sending API calls to NSX.
-    # Choices: NO_LIMIT SLIDING_WINDOW
-    #api_rate_limit_mode = SLIDING_WINDOW
+    # Choices: NO_LIMIT SLIDING_WINDOW ADAPTIVE_AIMD
+    #api_rate_limit_mode = ADAPTIVE_AIMD
 
     # When nsx_v3.api_rate_limit_mode is not set to NO_LIMIT, determines the
     # maximum number of API calls sent per manager ip per second. Should be a
     # positive integer.
     #max_api_rate = 40
+
+    # Resource ID of the client SSL profile which will be used by Loadbalancer
+    # while participating in TLS handshake with the client
+    #client_ssl_profile = <None>
 
 
     [ha]
@@ -533,9 +542,11 @@ data:
     #enable_ncp_event = False
 
     # Set this to True to enable multus to create multiple interfaces for one
-    # pod. Pod annotations under prefix "k8s.v1.cni.cncf.io" cannot be modified
-    # after pod realized. User defined IP will not be allocated from Segment
-    # IPPool. "gateway" in NetworkAttachmentDefinition is not used to configure
+    # pod. If passthrough interface is usedas additional interface, user should
+    # deploy device plugin to provide device allocation information for NCP.Pod
+    # annotations under prefix "k8s.v1.cni.cncf.io" cannot be modified after
+    # pod realized. User defined IP will not be allocated from Segment IPPool.
+    # "gateway" in NetworkAttachmentDefinition is not used to configure
     # secondary interfaces. Default gateway of pod is configured by primary
     # interface. User must define IP and/or MAC if no "ipam" is configured.Only
     # available if node type is HOSTVM
@@ -610,10 +621,4 @@ data:
     # increase the time if OVS is in heavy load to create/delete ports
     #ovs_operation_timeout = 5
 
-    # List of vendor id and device id of supported SRIOV VF devices
-    #sriov_vf_types = 15b3:1012,1016,6746,1014,0263,1018,101c,101a,6778,101e,1004,6764,1002
-    #sriov_vf_types = 1924:1803,1923,1a03,1903,1813,1b03
-    #sriov_vf_types = 19e5:a22e
-    #sriov_vf_types = 8086:1f44,1889,37cd,1515,152f,15b4,152e,15c5,1564,1565,10ed,10ca,1530,1571,15a9,15a8,1520,154c
-    #sriov_vf_types = 14e4:1609,1806,16d3,16e1,16ad,16af,163f,16a9,163e,16dc,16cb,166f
-    #sriov_vf_types = 177d:9713,9712
+
