@@ -1,3 +1,6 @@
+/* Copyright © 2020 VMware, Inc. All Rights Reserved.
+   SPDX-License-Identifier: Apache-2.0 */
+
 package statusmanager
 
 import (
@@ -16,7 +19,7 @@ func (status *StatusManager) SetFromNodes(cachedNodeSet map[string]*NodeStatus) 
 	defer status.Unlock()
 	messages := []string{}
 	allProcessesDone := true
-	for nodeName, _ := range(cachedNodeSet) {
+	for nodeName, _ := range cachedNodeSet {
 		if !cachedNodeSet[nodeName].Success {
 			messages = append(messages, cachedNodeSet[nodeName].Reason)
 			allProcessesDone = false

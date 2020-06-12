@@ -1,3 +1,6 @@
+/* Copyright © 2020 VMware, Inc. All Rights Reserved.
+   SPDX-License-Identifier: Apache-2.0 */
+
 package configmap
 
 import (
@@ -283,10 +286,11 @@ func updateNetworkStatus(networkConfig *configv1.Network, r *ReconcileConfigMap)
 			log.Error(err, fmt.Sprintf("Could not apply (%s) %s/%s", data.GroupVersionKind(),
 				data.GetNamespace(), data.GetName()))
 			return err
-		}else {
-			log.Error(err,"Retrieved data for updating network status is empty.")
-			return err}
+		} else {
+			log.Error(err, "Retrieved data for updating network status is empty.")
+			return err
 		}
+	}
 	log.Info("Successfully updated Network Status")
 	return nil
 }
@@ -302,7 +306,7 @@ func getNetworkCRD(networkConfig *configv1.Network) configv1.NetworkStatus {
 	for _, cnet := range networkConfig.Spec.ClusterNetwork {
 		status.ClusterNetwork = append(status.ClusterNetwork,
 			configv1.ClusterNetworkEntry{
-				CIDR:       cnet.CIDR,
+				CIDR: cnet.CIDR,
 			})
 	}
 	status.NetworkType = networkConfig.Spec.NetworkType
