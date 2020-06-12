@@ -4,7 +4,7 @@
 package controller
 
 import (
-	"gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/controller/pod"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/pod"
 )
 
 func init() {

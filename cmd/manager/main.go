@@ -13,9 +13,9 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	"gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/apis"
-	"gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/controller"
-	"gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/version"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/apis"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/controller"
+	"github.com/vmware/nsx-container-plugin-operator/version"
 
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"

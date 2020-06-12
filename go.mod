@@ -1,4 +1,4 @@
-module gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator
+module github.com/vmware/nsx-container-plugin-operator
 
 go 1.13
 

@@ -9,9 +9,9 @@ import (
 	"testing"
 
 	configv1 "github.com/openshift/api/config/v1"
-	"gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/controller/sharedinfo"
-	"gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/controller/statusmanager"
-	ncptypes "gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/types"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
+	ncptypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"

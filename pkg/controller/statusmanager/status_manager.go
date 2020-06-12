@@ -15,7 +15,7 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
-	"gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/version"
+	"github.com/vmware/nsx-container-plugin-operator/version"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"

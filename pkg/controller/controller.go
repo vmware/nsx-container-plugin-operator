@@ -4,9 +4,9 @@
 package controller
 
 import (
-	"gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/controller/sharedinfo"
-	"gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/pkg/controller/statusmanager"
-	operatorversion "gitlab.eng.vmware.com/sorlando/ocp4_ncp_operator/version"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
+	operatorversion "github.com/vmware/nsx-container-plugin-operator/version"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
