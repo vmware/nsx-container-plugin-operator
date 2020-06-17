@@ -237,16 +237,6 @@ data:
     #dlb_l4_persistence = <None>
 
 
-
-
-
-    # Resource ID of the container ip blocks that will be used for creating
-    # subnets. If name, it must be unique. If policy_nsxapi is enabled, it also
-    # support automatically creating the IP blocks. The definition is a comma
-    # separated list: CIDR,CIDR,... Mixing different formats (e.g. UUID,CIDR)
-    # is not supported.
-    #container_ip_blocks = []
-
     # Resource ID of the container ip blocks that will be used for creating
     # subnets for no-SNAT projects. If specified, no-SNAT projects will use
     # these ip blocks ONLY. Otherwise they will use container_ip_blocks
