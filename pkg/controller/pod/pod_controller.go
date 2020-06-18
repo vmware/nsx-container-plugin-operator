@@ -146,7 +146,6 @@ func (r *ReconcilePod) Reconcile(request reconcile.Request) (reconcile.Result, e
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
 	if !r.isForNsxNcpResource(request) {
-		reqLogger.Info("Ignoring pod update")
 		return reconcile.Result{}, nil
 	}
 

@@ -6,6 +6,7 @@ package configmap
 import (
 	"context"
 	"fmt"
+
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-network-operator/pkg/apply"
 	k8sutil "github.com/openshift/cluster-network-operator/pkg/util/k8s"
@@ -99,7 +100,6 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	} else if request.Namespace == "" && request.Name == ncptypes.NetworkCRDName {
 		reqLogger.Info("Reconciling cluster Network CRD change")
 	} else {
-		reqLogger.Info("Ignoring other ConfigMap or Network CRD change")
 		return reconcile.Result{}, nil
 	}
 
