@@ -5,6 +5,7 @@ package sharedinfo
 
 import (
 	configv1 "github.com/openshift/api/config/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -14,7 +15,8 @@ type SharedInfo struct {
 
 	NsxNcpDeploymentSpec *unstructured.Unstructured
 
-	NetworkConfig *configv1.Network
+	NetworkConfig     *configv1.Network
+	OperatorConfigMap *corev1.ConfigMap
 }
 
 func New() *SharedInfo {

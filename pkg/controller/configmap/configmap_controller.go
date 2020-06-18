@@ -257,6 +257,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		}
 	}
 	appliedConfigMap = instance
+	r.shared_info.OperatorConfigMap = appliedConfigMap
 
 	// Update network CRD status
 	err = updateNetworkStatus(networkConfig, r)
