@@ -49,8 +49,10 @@ spec:
         livenessProbe:
           exec:
             command: [/bin/sh, -c, check_pod_liveness nsx-kube-proxy 5]
-          initialDelaySeconds: 5
-          periodSeconds: 5
+          failureThreshold: 5
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
         name: nsx-kube-proxy
         securityContext:
           capabilities:
