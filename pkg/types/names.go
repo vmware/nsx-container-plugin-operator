@@ -23,4 +23,10 @@ const (
 	LbKeyRenderKey              string = "LbKey"
 	LbSecret                    string = "lb-secret"
 	NcpImageEnv                 string = "NCP_IMAGE"
+	NsxCertRenderKey            string = "NsxCert"
+	NsxKeyRenderKey             string = "NsxKey"
+	NsxCARenderKey              string = "NsxCA"
+	NsxCertTempPath             string = "/tmp/nsx.cert"
+	NsxKeyTempPath              string = "/tmp/nsx.key"
+	NsxCATempPath               string = "/tmp/nsx.ca"
 )
