@@ -1,6 +1,3 @@
-/* Copyright © 2020 VMware, Inc. All Rights Reserved.
-   SPDX-License-Identifier: Apache-2.0 */
-
 package configmap
 
 import (
@@ -196,6 +193,19 @@ func Render(configmap *corev1.ConfigMap) ([]*unstructured.Unstructured, error) {
 	}
 	renderData.Data[ncptypes.LbCertRenderKey] = lbCert
 	renderData.Data[ncptypes.LbKeyRenderKey] = lbKey
+
+	// Set NSX secret
+	nsxCert := ""
+	nsxKey := ""
+	nsxCA := ""
+	if err == nil && sec.HasKey("nsx_api_cert") && sec.HasKey("nsx_api_private_key") {
+		nsxCert = sec.Key("nsx_api_cert").Value()
+		nsxKey = sec.Key("nsx_api_private_key").Value()
+		nsxCA = sec.Key("nsx_ca").Value()
+	}
+	renderData.Data[ncptypes.NsxCertRenderKey] = nsxCert
+	renderData.Data[ncptypes.NsxKeyRenderKey] = nsxKey
+	renderData.Data[ncptypes.NsxCARenderKey] = nsxCA
 
 	manifests, err := render.RenderDir(manifestDir, &renderData)
 	if err != nil {

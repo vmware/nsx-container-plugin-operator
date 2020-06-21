@@ -1,6 +1,3 @@
-/* Copyright © 2020 VMware, Inc. All Rights Reserved.
-   SPDX-License-Identifier: Apache-2.0 */
-
 package node
 
 import (
@@ -9,6 +6,8 @@ import (
 	"strings"
 
 	"crypto/tls"
+	"crypto/x509"
+	"io/ioutil"
 	"net/http"
 
 	"github.com/pkg/errors"
@@ -139,6 +138,36 @@ func searchSegmentPortByNodeName(nsxConfig *NsxConfig, nodeName string) (*model.
 	return &segmentPort, nil
 }
 
+func getConnectorTLSConfig(insecure bool, clientCertFile string, clientKeyFile string, caFile string) (*tls.Config, error) {
+	tlsConfig := tls.Config{InsecureSkipVerify: insecure}
+
+	if len(clientCertFile) > 0 {
+		if len(clientKeyFile) == 0 {
+			return nil, fmt.Errorf("Please provide key file for client certificate")
+		}
+
+		cert, err := tls.LoadX509KeyPair(clientCertFile, clientKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to load client cert/key pair: %v", err)
+		}
+
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	}
+
+	if len(caFile) > 0 {
+		caCert, err := ioutil.ReadFile(caFile)
+		if err != nil {
+			return nil, err
+		}
+
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+
+		tlsConfig.RootCAs = caCertPool
+	}
+	return &tlsConfig, nil
+}
+
 func (r *ReconcileNode) createNsxConfig() (*NsxConfig, error) {
 	// TODO: get configurations from configmap_controller
 	log.Info("Getting NCP configmap for node controller")
@@ -157,21 +186,74 @@ func (r *ReconcileNode) createNsxConfig() (*NsxConfig, error) {
 	var managerHost = strings.Split(cfg.Section("nsx_v3").Key("nsx_api_managers").Value(), ",")[0]
 	var user = cfg.Section("nsx_v3").Key("nsx_api_user").Value()
 	var password = cfg.Section("nsx_v3").Key("nsx_api_password").Value()
+	var insecure = false
+	if strings.ToLower(cfg.Section("nsx_v3").Key("insecure").Value()) == "true" {
+		insecure = true
+	}
+
+	// Get cert and private key, then write then into temp files
+	nsxSecret := &corev1.Secret{}
+	var certData []byte
+	var keyData []byte
+	var caData []byte
+	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.NsxSecretName}, nsxSecret)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			log.Info("NSX secret not found")
+		} else {
+			return nil, fmt.Errorf("Failed to get NSX secret: %v", err)
+		}
+	} else {
+		secretData := nsxSecret.Data
+		certData = secretData["tls.crt"]
+		keyData = secretData["tls.key"]
+		caData = secretData["tls.ca"]
+	}
 	nsxConfig := NsxConfig{}
+	tmpCertPath := ""
+	tmpKeyPath := ""
+	tmpCAPath := ""
+	// cert/key is preferred to connect to NSX
+	if len(certData) == 0 {
+		if len(user) == 0 {
+			return nil, errors.Errorf("No credentials for NSX authentication supplied")
+		} else {
+			securityCtx := core.NewSecurityContextImpl()
+			securityCtx.SetProperty(security.AUTHENTICATION_SCHEME_ID, security.USER_PASSWORD_SCHEME_ID)
+			securityCtx.SetProperty(security.USER_KEY, user)
+			securityCtx.SetProperty(security.PASSWORD_KEY, password)
+			nsxConfig.PolicySecurityContext = securityCtx
+			log.Info("Using username and password to connect to NSX")
+		}
+	} else {
+		tmpCertPath = operatortypes.NsxCertTempPath
+		tmpKeyPath = operatortypes.NsxKeyTempPath
+		tmpCAPath = operatortypes.NsxCATempPath
+		err = ioutil.WriteFile(tmpCertPath, []byte(certData), 0644)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to write cert file %s: %v", tmpCertPath, err)
+		}
+		err = ioutil.WriteFile(tmpKeyPath, []byte(keyData), 0644)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to write private key file %s: %v", tmpKeyPath, err)
+		}
+		err = ioutil.WriteFile(tmpCAPath, []byte(caData), 0644)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to write CA file %s: %v", tmpCAPath, err)
+		}
+		log.Info("Using cert and private key to connect to NSX")
+	}
+
+	tlsConfig, err := getConnectorTLSConfig(insecure, tmpCertPath, tmpKeyPath, tmpCAPath)
+
 	nsxConfig.Cluster = cluster
-	tlsConfig := tls.Config{InsecureSkipVerify: true}
-	tlsConfig.BuildNameToCertificate()
 	tr := &http.Transport{
 		Proxy:           http.ProxyFromEnvironment,
-		TLSClientConfig: &tlsConfig,
+		TLSClientConfig: tlsConfig,
 	}
 	httpClient := http.Client{Transport: tr}
 	nsxConfig.PolicyHTTPClient = &httpClient
-	securityCtx := core.NewSecurityContextImpl()
-	securityCtx.SetProperty(security.AUTHENTICATION_SCHEME_ID, security.USER_PASSWORD_SCHEME_ID)
-	securityCtx.SetProperty(security.USER_KEY, user)
-	securityCtx.SetProperty(security.PASSWORD_KEY, password)
-	nsxConfig.PolicySecurityContext = securityCtx
+
 	connector := policyclient.NewRestConnector(fmt.Sprintf("https://%s", managerHost), *nsxConfig.PolicyHTTPClient)
 	if nsxConfig.PolicySecurityContext != nil {
 		connector.SetSecurityContext(nsxConfig.PolicySecurityContext)

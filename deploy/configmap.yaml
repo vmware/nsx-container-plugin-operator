@@ -625,10 +625,24 @@ data:
     [operator]
 
     # The default certificate for HTTPS load balancing.
-    # Must be specified along with lb_priv_key option.
+    # Must be base64 encoded and specified along with lb_priv_key option.
     # Operator will create lb-secret for NCP based on these two options.
     #lb_default_cert = <None>
 
     # The private key for default certificate for HTTPS load balancing.
-    # Must be specified along with lb_default_cert option.
+    # Must be base64 encoded and specified along with lb_default_cert option.
     #lb_priv_key = <None>
+
+    # The certificate for NSX connection.
+    # Must be base64 encoded and specified along with nsx_api_private_key.
+    # Operator will create nsx-secret for NCP based on these two options.
+    #nsx_api_cert = <None>
+
+    # The private key for NSX certificate.
+    # Must be base64 encoded and specified along with nsx_api_cert.
+    #nsx_api_private_key = <None>
+
+    # The CA to use in verifying the NSX Manager server certificate.
+    # The content should be base64 encoded and will be ignored if "insecure" is
+    # set to True.
+    # nsx_ca = <None>

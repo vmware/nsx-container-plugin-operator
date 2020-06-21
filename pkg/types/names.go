@@ -1,6 +1,3 @@
-/* Copyright © 2020 VMware, Inc. All Rights Reserved.
-   SPDX-License-Identifier: Apache-2.0 */
-
 package types
 
 const (
@@ -21,4 +18,11 @@ const (
 	NetworkType                 string = "ncp"
 	LbCertRenderKey             string = "LbCert"
 	LbKeyRenderKey              string = "LbKey"
+	NsxCertRenderKey            string = "NsxCert"
+	NsxKeyRenderKey             string = "NsxKey"
+	NsxCARenderKey              string = "NsxCA"
+	NsxSecretName               string = "nsx-secret"
+	NsxCertTempPath             string = "/tmp/nsx.cert"
+	NsxKeyTempPath              string = "/tmp/nsx.key"
+	NsxCATempPath               string = "/tmp/nsx.ca"
 )
