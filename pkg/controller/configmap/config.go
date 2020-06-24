@@ -278,43 +278,6 @@ func inSlice(str string, s []string) bool {
 	return false
 }
 
-func ValidateChangeIsSafe(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap) error {
-	if prevConfig == nil {
-		return nil
-	}
-	currCfg, err := ini.Load([]byte(currConfig.Data[ncptypes.ConfigMapDataKey]))
-	if err != nil {
-		log.Error(err, "Failed to load current ConfigMap")
-		return err
-	}
-	prevCfg, err := ini.Load([]byte(prevConfig.Data[ncptypes.ConfigMapDataKey]))
-	if err != nil {
-		log.Error(err, "Failed to load previous ConfigMap")
-		return err
-	}
-	currBlocks := strings.Split(currCfg.Section("nsx_v3").Key("container_ip_blocks").Value(), ",")
-	prevBlocks := strings.Split(prevCfg.Section("nsx_v3").Key("container_ip_blocks").Value(), ",")
-
-	missingBlocks := []string{}
-	for _, p := range prevBlocks {
-		prevExists := false
-		for _, c := range currBlocks {
-			if p == c {
-				prevExists = true
-				break
-			}
-		}
-		if !prevExists {
-			missingBlocks = append(missingBlocks, p)
-		}
-	}
-
-	if len(missingBlocks) > 0 {
-		return errors.Errorf("cluster network %s are missing", missingBlocks)
-	}
-	return nil
-}
-
 func generateConfigMap(srcCfg *ini.File, sections []string) (string, error) {
 	destCfg := ini.Empty()
 	for _, name := range sections {
