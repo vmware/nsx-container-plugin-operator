@@ -36,18 +36,18 @@ var appliedConfigMap *corev1.ConfigMap
 
 // Add creates a new ConfigMap Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
-func Add(mgr manager.Manager, status *statusmanager.StatusManager, shared_info *sharedinfo.SharedInfo) error {
-	return add(mgr, newReconciler(mgr, status, shared_info))
+func Add(mgr manager.Manager, status *statusmanager.StatusManager, sharedInfo *sharedinfo.SharedInfo) error {
+	return add(mgr, newReconciler(mgr, status, sharedInfo))
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager, status *statusmanager.StatusManager, shared_info *sharedinfo.SharedInfo) reconcile.Reconciler {
+func newReconciler(mgr manager.Manager, status *statusmanager.StatusManager, sharedInfo *sharedinfo.SharedInfo) reconcile.Reconciler {
 	configv1.Install(mgr.GetScheme())
 	return &ReconcileConfigMap{
-		client:      mgr.GetClient(),
-		scheme:      mgr.GetScheme(),
-		status:      status,
-		shared_info: shared_info,
+		client:     mgr.GetClient(),
+		scheme:     mgr.GetScheme(),
+		status:     status,
+		sharedInfo: sharedInfo,
 	}
 }
 
@@ -80,10 +80,10 @@ var _ reconcile.Reconciler = &ReconcileConfigMap{}
 type ReconcileConfigMap struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
-	client      client.Client
-	scheme      *runtime.Scheme
-	status      *statusmanager.StatusManager
-	shared_info *sharedinfo.SharedInfo
+	client     client.Client
+	scheme     *runtime.Scheme
+	status     *statusmanager.StatusManager
+	sharedInfo *sharedinfo.SharedInfo
 }
 
 // Reconcile reads that state of the cluster for a ConfigMap object and makes changes based on the state read
@@ -207,7 +207,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	r.updateSharedInfoWithNsxNcpResources(objs)
-	r.shared_info.NetworkConfig = networkConfig
+	r.sharedInfo.NetworkConfig = networkConfig
 
 	// Apply objects to K8s cluster
 	for _, obj := range objs {
@@ -321,11 +321,11 @@ func deleteExistingPods(c client.Client, component string) error {
 func (r *ReconcileConfigMap) updateSharedInfoWithNsxNcpResources(objs []*unstructured.Unstructured) {
 	for _, obj := range objs {
 		if obj.GetName() == ncptypes.NsxNodeAgentDsName {
-			r.shared_info.NsxNodeAgentDsSpec = obj.DeepCopy()
+			r.sharedInfo.NsxNodeAgentDsSpec = obj.DeepCopy()
 		} else if obj.GetName() == ncptypes.NsxNcpBootstrapDsName {
-			r.shared_info.NsxNcpBootstrapDsSpec = obj.DeepCopy()
+			r.sharedInfo.NsxNcpBootstrapDsSpec = obj.DeepCopy()
 		} else if obj.GetName() == ncptypes.NsxNcpDeploymentName {
-			r.shared_info.NsxNcpDeploymentSpec = obj.DeepCopy()
+			r.sharedInfo.NsxNcpDeploymentSpec = obj.DeepCopy()
 		}
 	}
 	log.Info("Updated shared info with Nsx Ncp Resources")
