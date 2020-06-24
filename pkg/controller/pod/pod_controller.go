@@ -153,7 +153,7 @@ func (r *ReconcilePod) Reconcile(request reconcile.Request) (reconcile.Result, e
 	r.status.SetFromPods()
 
 	if err := r.recreateNsxNcpResourceIfDeleted(request.Name); err != nil {
-		return reconcile.Result{}, err
+		return reconcile.Result{Requeue: true}, err
 	}
 
 	return reconcile.Result{RequeueAfter: ResyncPeriod}, nil
