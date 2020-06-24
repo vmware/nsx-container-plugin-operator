@@ -272,7 +272,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 }
 
 func updateNetworkStatus(networkConfig *configv1.Network, r *ReconcileConfigMap) error {
-	status := getNetworkCRD(networkConfig)
+	status := getNetworkCRDStatus(networkConfig)
 	// Render information
 	networkConfig.Status = status
 	data, err := k8sutil.ToUnstructured(networkConfig)
@@ -295,18 +295,20 @@ func updateNetworkStatus(networkConfig *configv1.Network, r *ReconcileConfigMap)
 	return nil
 }
 
-func getNetworkCRD(networkConfig *configv1.Network) configv1.NetworkStatus {
+func getNetworkCRDStatus(networkConfig *configv1.Network) configv1.NetworkStatus {
 	// Values extracted from spec are serviceNetwork and clusterNetworkCIDR.
-	// HostPrefix is ignored.
 	status := configv1.NetworkStatus{}
 	for _, snet := range networkConfig.Spec.ServiceNetwork {
 		status.ServiceNetwork = append(status.ServiceNetwork, snet)
 	}
 
 	for _, cnet := range networkConfig.Spec.ClusterNetwork {
+		// we need to specify a hostprefix even if we do not use it
+		// in NCP. Setting it to the same size as the original one
 		status.ClusterNetwork = append(status.ClusterNetwork,
 			configv1.ClusterNetworkEntry{
-				CIDR: cnet.CIDR,
+				CIDR:       cnet.CIDR,
+				HostPrefix: cnet.HostPrefix,
 			})
 	}
 	status.NetworkType = networkConfig.Spec.NetworkType
