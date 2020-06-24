@@ -204,24 +204,6 @@ func TestInSlice(t *testing.T) {
 	assert.True(t, inSlice(str, strs))
 }
 
-func TestValidateChangeIsSafe(t *testing.T) {
-	currConfigMap := createMockConfigMap()
-	var prevConfigMap *corev1.ConfigMap = nil
-	err := ValidateChangeIsSafe(currConfigMap, prevConfigMap)
-	assert.Nil(t, err)
-
-	prevConfigMap = createMockConfigMap()
-	err = ValidateChangeIsSafe(currConfigMap, prevConfigMap)
-	assert.Nil(t, err)
-
-	data := &prevConfigMap.Data
-	cfg, _ := ini.Load([]byte((*data)[ncptypes.ConfigMapDataKey]))
-	cfg.Section("nsx_v3").NewKey("container_ip_blocks", "10.0.0.0/16")
-	(*data)[ncptypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
-	err = ValidateChangeIsSafe(currConfigMap, prevConfigMap)
-	assert.Error(t, err, "cluster network 10.0.0.0/16 are missing")
-}
-
 func TestGenerateConfigMap(t *testing.T) {
 	cfg := ini.Empty()
 	cfg.NewSections("sec1", "sec2", "sec3")

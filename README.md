@@ -93,8 +93,8 @@ User needs to set NCP image as an environment parameter `NCP_IMAGE` in `deploy/o
 
 ### Unsafe changes
 If CIDRs in `clusterNetwork` are already applied, it is unsafe to remove them.
-NSX NCP operator will fail to reconcile new configurations if it detects some
-existing network CIDRs are deleted.
+NSX NCP operator won't fail when it detects some existing network CIDRs are deleted,
+but the removal may cause unexpected issues.
 
 ## Contributing
 
