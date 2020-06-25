@@ -56,6 +56,7 @@ func TestFillDefaults(t *testing.T) {
 	assert.Equal(t, "True", cfg.Section("nsx_v3").Key("single_tier_topology").Value())
 	assert.Equal(t, "True", cfg.Section("coe").Key("enable_snat").Value())
 	assert.Equal(t, "True", cfg.Section("ha").Key("enable").Value())
+	assert.Equal(t, "False", cfg.Section("k8s").Key("process_oc_network").Value())
 	assert.Equal(t, "10.0.0.0/24", cfg.Section("nsx_v3").Key("container_ip_blocks").Value())
 }
 

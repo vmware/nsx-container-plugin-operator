@@ -40,6 +40,7 @@ func FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "single_tier_topology", "True", true))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "coe", "enable_snat", "True", false))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "ha", "enable", "True", false))
+	appendErrorIfNotNil(&errs, fillDefault(cfg, "k8s", "process_oc_network", "False", true))
 	appendErrorIfNotNil(&errs, fillClusterNetwork(spec, cfg))
 
 	// Write config back to ConfigMap data
