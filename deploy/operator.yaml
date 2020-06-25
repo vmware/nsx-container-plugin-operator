@@ -24,8 +24,7 @@ spec:
         - name: nsx-ncp-operator
           # Replace this with the built image name
           image: REPLACE_IMAGE
-          command:
-          - nsx-ncp-operator
+          command: ["/bin/bash", "-c", "nsx-ncp-operator --zap-time-encoding=iso8601"]
           imagePullPolicy: Always
           env:
             - name: POD_NAME
