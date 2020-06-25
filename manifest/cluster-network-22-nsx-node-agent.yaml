@@ -84,6 +84,8 @@ spec:
         - {mountPath: /var/log/openvswitch, name: host-var-log-ujo, subPath: openvswitch}
         - {mountPath: /usr/sbin/modinfo, name: host-modinfo, readOnly: true}
         - {mountPath: /usr/lib64/libcrypto.so.1.1, name: host-libcrypto}
+        - {mountPath: /var/run/dbus, name: dbus}
+        - {mountPath: /host/etc/sysconfig/network-scripts, name: nscripts}
       hostNetwork: true
       serviceAccountName: nsx-node-agent-svc-account
       terminationGracePeriodSeconds: 60
@@ -129,4 +131,8 @@ spec:
         name: host-depmod
       - hostPath: {path: /usr/lib64/libcrypto.so.1.1}
         name: host-libcrypto
+      - hostPath: {path: /var/run/dbus}
+        name: dbus
+      - hostPath: {path: /etc/sysconfig/network-scripts}
+        name: nscripts
   updateStrategy: {type: RollingUpdate}
