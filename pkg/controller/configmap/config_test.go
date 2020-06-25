@@ -151,7 +151,21 @@ func TestValidateClusterNetwork(t *testing.T) {
 	assert.Equal(t, 1, len(errs))
 
 	mockNetworkSpec.ClusterNetwork = []configv1.ClusterNetworkEntry{
-		configv1.ClusterNetworkEntry{CIDR: "10.0.0.0/16"}}
+		configv1.ClusterNetworkEntry{CIDR: "10.0.0.0/31"}}
+	errs = validateClusterNetwork(mockNetworkSpec)
+	assert.Equal(t, 2, len(errs))
+
+	mockNetworkSpec.ClusterNetwork = []configv1.ClusterNetworkEntry{
+		configv1.ClusterNetworkEntry{
+			CIDR:       "10.0.0.0/16",
+			HostPrefix: uint32(12)}}
+	errs = validateClusterNetwork(mockNetworkSpec)
+	assert.Equal(t, 1, len(errs))
+
+	mockNetworkSpec.ClusterNetwork = []configv1.ClusterNetworkEntry{
+		configv1.ClusterNetworkEntry{
+			CIDR:       "10.0.0.0/16",
+			HostPrefix: uint32(24)}}
 	errs = validateClusterNetwork(mockNetworkSpec)
 	assert.Empty(t, errs)
 }

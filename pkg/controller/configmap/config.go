@@ -129,6 +129,15 @@ func validateConfigMap(configmap *corev1.ConfigMap) []error {
 	return errs
 }
 
+func getPrefixFromCIDR(cidr string) (uint32, error) {
+	cidrPrefix := cidr[strings.LastIndex(cidr, "/")+1:]
+	i, err := strconv.ParseUint(cidrPrefix, 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	return uint32(i), nil
+}
+
 func validateClusterNetwork(spec *configv1.NetworkSpec) []error {
 	errs := []error{}
 	if strings.ToLower(spec.NetworkType) != ncptypes.NetworkType {
@@ -141,7 +150,23 @@ func validateClusterNetwork(spec *configv1.NetworkSpec) []error {
 	}
 	for idx, pool := range spec.ClusterNetwork {
 		_, _, err := net.ParseCIDR(pool.CIDR)
-		appendErrorIfNotNil(&errs, errors.Wrapf(err, "cluster network %d CIDR %q is invalid", idx, pool.CIDR))
+		if err != nil {
+			appendErrorIfNotNil(&errs, errors.Wrapf(err, "cluster network %d CIDR %q is invalid", idx, pool.CIDR))
+			continue
+		}
+		cidrPrefix, err := getPrefixFromCIDR(pool.CIDR)
+		if err != nil {
+			appendErrorIfNotNil(&errs, errors.Wrapf(err, "unable to infer CIDR prefix in CIDR: %q", pool.CIDR))
+			continue
+		}
+
+		if cidrPrefix > 30 {
+			appendErrorIfNotNil(&errs, errors.Errorf("invalid CIDR prefix length for CIDR %q. it must be larger than 30", pool.CIDR))
+		}
+
+		if pool.HostPrefix < cidrPrefix {
+			appendErrorIfNotNil(&errs, errors.Errorf("invalid CIDR HostPrefix: %d for CIDR %q. It must be smaller than or equal to the CIDR Prefix", pool.HostPrefix, pool.CIDR))
+		}
 	}
 	return errs
 }
