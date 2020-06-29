@@ -101,10 +101,15 @@ from NSX manager will cause network realization failure on corresponding nodes.
 ## Contributing
 
 We welcome community contributions to the NSX Container plugin Operator!
-Before you start working with nsx-container-plugin-operator, please read our 
-[Developer Certificate of Origin](https://cla.vmware.com/dco). All contributions to this repository must be
-signed as described on that page. Your signature certifies that you wrote the patch or have the right to pass it on
-as an open-source patch. For more detailed information, refer to [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Before you start working with nsx-container-plugin-operator, you should sign our
+contributor license agreement (CLA).
+
+If you wish to contribute code and you have not signed our CLA, our bot will update
+the issue when you open a Pull Request.
+For more detailed information, refer to [CONTRIBUTING.md](CONTRIBUTING.md).
+
+For any questions about the CLA process, please refer to our [FAQ](https://cla.vmware.com/faq).
 
 ## License
 

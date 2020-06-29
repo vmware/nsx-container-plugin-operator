@@ -16,6 +16,7 @@ require (
 	github.com/sirupsen/logrus v1.5.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.4.0
+	github.com/vmware/go-vmware-nsxt v0.0.0-20200529214410-b51c930ccbfb
 	github.com/vmware/vsphere-automation-sdk-go/runtime v0.2.0
 	github.com/vmware/vsphere-automation-sdk-go/services/nsxt v0.3.0
 	gopkg.in/ini.v1 v1.51.0
@@ -25,7 +26,6 @@ require (
 	k8s.io/kube-proxy v0.18.3 // indirect
 	k8s.io/kubectl v0.17.4
 	sigs.k8s.io/controller-runtime v0.5.2
-	sigs.k8s.io/structured-merge-diff v1.0.2 // indirect
 )
 
 replace (
