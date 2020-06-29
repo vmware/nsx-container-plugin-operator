@@ -13,6 +13,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/vmware/go-vmware-nsxt"
 	"github.com/vmware/vsphere-automation-sdk-go/runtime/core"
 	"github.com/vmware/vsphere-automation-sdk-go/runtime/data"
 	vspherelog "github.com/vmware/vsphere-automation-sdk-go/runtime/log"
@@ -94,7 +95,8 @@ type ReconcileNode struct {
 	status *statusmanager.StatusManager
 }
 
-type NsxConfig struct {
+type NsxClients struct {
+	ManagerClient         *nsxt.APIClient
 	PolicySecurityContext *core.SecurityContextImpl
 	PolicyHTTPClient      *http.Client
 	PolicyConnector       *policyclient.RestConnector
@@ -103,9 +105,9 @@ type NsxConfig struct {
 
 var cachedNodeSet = map[string](*statusmanager.NodeStatus){}
 
-func searchSegmentPortByNodeName(nsxConfig *NsxConfig, nodeName string) (*model.SegmentPort, error) {
+func searchSegmentPortByNodeNameAddress(nsxClients *NsxClients, nodeName string, nodeAddress string) (*model.SegmentPort, error) {
 	log.Info(fmt.Sprintf("Searching segment port for node %s", nodeName))
-	connector := nsxConfig.PolicyConnector
+	connector := nsxClients.PolicyConnector
 	searchClient := search.NewDefaultQueryClient(connector)
 	// If multiple node VMs have the same name, the index postfix will be added to the segment port name, e.g.
 	//   1. compute-0/compute-0.vmx@<tn-id> ("compute-0" is a node VM name)
@@ -118,15 +120,16 @@ func searchSegmentPortByNodeName(nsxConfig *NsxConfig, nodeName string) (*model.
 	if len(ports.Results) == 0 {
 		return nil, errors.Errorf("Segment port for node %s not found", nodeName)
 	}
-	if len(ports.Results) > 1 {
-		// TODO: handle the case that multiple node with the same name in multiple clusters
-		return nil, errors.Errorf("Found multiple segment ports for node %s", nodeName)
+	portIndex := 0
+	portIndex, err = filterSegmentPorts(nsxClients, ports.Results, nodeName, nodeAddress)
+	if err != nil {
+		return nil, errors.Errorf("Found %d segment ports for node %s, but none with address %s: %s", len(ports.Results), nodeName, nodeAddress, err)
 	}
-	portId, err := ports.Results[0].Field("id")
+	portId, err := ports.Results[portIndex].Field("id")
 	if err != nil {
 		return nil, err
 	}
-	portPath, err := ports.Results[0].Field("parent_path")
+	portPath, err := ports.Results[portIndex].Field("parent_path")
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +142,27 @@ func searchSegmentPortByNodeName(nsxConfig *NsxConfig, nodeName string) (*model.
 	return &segmentPort, nil
 }
 
-func (r *ReconcileNode) createNsxConfig() (*NsxConfig, error) {
+func filterSegmentPorts(nsxClients *NsxClients, ports []*data.StructValue, nodeName string, nodeAddress string) (int, error) {
+	log.Info(fmt.Sprintf("Found %d segment ports for node %s, checking addresses", len(ports), nodeName))
+	for idx, port := range ports {
+		portPolicyId, err := port.Field("id")
+		if err != nil {
+			return -1, err
+		}
+		portPolicyIdValue := (portPolicyId).(*data.StringValue).Value()
+		// there's an assumption that the policy ID has format "default:<manager_id>"
+		portMgrId := string([]byte(portPolicyIdValue)[8:])
+		nsxClient := nsxClients.ManagerClient
+		logicalPort, _, err := nsxClient.LogicalSwitchingApi.GetLogicalPortState(nsxClient.Context, portMgrId)
+		address := logicalPort.RealizedBindings[0].Binding.IpAddress
+		if address == nodeAddress {
+			return idx, nil
+		}
+	}
+	return -1, errors.Errorf("No port matches")
+}
+
+func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 	// TODO: get configurations from configmap_controller
 	log.Info("Getting NCP configmap for node controller")
 	ncpConfigMap := &corev1.ConfigMap{}
@@ -157,8 +180,11 @@ func (r *ReconcileNode) createNsxConfig() (*NsxConfig, error) {
 	var managerHost = strings.Split(cfg.Section("nsx_v3").Key("nsx_api_managers").Value(), ",")[0]
 	var user = cfg.Section("nsx_v3").Key("nsx_api_user").Value()
 	var password = cfg.Section("nsx_v3").Key("nsx_api_password").Value()
-	nsxConfig := NsxConfig{}
-	nsxConfig.Cluster = cluster
+
+	nsxClients := NsxClients{}
+	nsxClients.Cluster = cluster
+
+	// policy client
 	tlsConfig := tls.Config{InsecureSkipVerify: true}
 	tlsConfig.BuildNameToCertificate()
 	tr := &http.Transport{
@@ -166,18 +192,36 @@ func (r *ReconcileNode) createNsxConfig() (*NsxConfig, error) {
 		TLSClientConfig: &tlsConfig,
 	}
 	httpClient := http.Client{Transport: tr}
-	nsxConfig.PolicyHTTPClient = &httpClient
+	nsxClients.PolicyHTTPClient = &httpClient
 	securityCtx := core.NewSecurityContextImpl()
 	securityCtx.SetProperty(security.AUTHENTICATION_SCHEME_ID, security.USER_PASSWORD_SCHEME_ID)
 	securityCtx.SetProperty(security.USER_KEY, user)
 	securityCtx.SetProperty(security.PASSWORD_KEY, password)
-	nsxConfig.PolicySecurityContext = securityCtx
-	connector := policyclient.NewRestConnector(fmt.Sprintf("https://%s", managerHost), *nsxConfig.PolicyHTTPClient)
-	if nsxConfig.PolicySecurityContext != nil {
-		connector.SetSecurityContext(nsxConfig.PolicySecurityContext)
+	nsxClients.PolicySecurityContext = securityCtx
+	connector := policyclient.NewRestConnector(fmt.Sprintf("https://%s", managerHost), *nsxClients.PolicyHTTPClient)
+	if nsxClients.PolicySecurityContext != nil {
+		connector.SetSecurityContext(nsxClients.PolicySecurityContext)
 	}
-	nsxConfig.PolicyConnector = connector
-	return &nsxConfig, nil
+	nsxClients.PolicyConnector = connector
+
+	// manager client
+	nsxtClient, err := nsxt.NewAPIClient(&nsxt.Configuration{
+                BasePath: fmt.Sprintf("https://%s/api/v1", managerHost),
+                UserName: user,
+                Password: password,
+                Host:     managerHost,
+                Insecure: true,
+                RetriesConfiguration: nsxt.ClientRetriesConfiguration{
+                        MaxRetries:    1,
+                        RetryMinDelay: 100,
+                        RetryMaxDelay: 500,
+                },
+        })
+	if err != nil {
+		return nil, err
+	}
+	nsxClients.ManagerClient = nsxtClient
+	return &nsxClients, nil
 }
 
 // Reconcile reads that state of the cluster for a Node object and makes changes based on the state read
@@ -240,7 +284,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 		return reconcile.Result{}, nil
 	}
 
-	nsxConfig, err := r.createNsxConfig()
+	nsxClients, err := r.createNsxClients()
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Address: nodeAddress,
@@ -251,9 +295,9 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 		return reconcile.Result{}, err
 	}
 
-	cluster := nsxConfig.Cluster
+	cluster := nsxClients.Cluster
 	reqLogger.Info("Searching the logical port for node")
-	segmentPort, err := searchSegmentPortByNodeName(nsxConfig, nodeName)
+	segmentPort, err := searchSegmentPortByNodeNameAddress(nsxClients, nodeName, nodeAddress)
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Address: nodeAddress,
@@ -265,10 +309,10 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	}
 	reqLogger.Info("Got the segment port", "segmentPort.Id", *segmentPort.Id, "segmentPort.Path", *segmentPort.Path, "cluster", cluster)
 
-	// TODO: find a way to fill the segmentPort by using the return value from searchSegmentPortByNodeName then we won't need to invoke the Get API again.
+	// TODO: find a way to fill the segmentPort by using the return value from searchSegmentPortByNodeNameAddress then we won't need to invoke the Get API again.
 	sl := strings.Split(*segmentPort.Path, "/")
 	segmentId := sl[len(sl)-1]
-	portsClient := segments.NewDefaultPortsClient(nsxConfig.PolicyConnector)
+	portsClient := segments.NewDefaultPortsClient(nsxClients.PolicyConnector)
 	*segmentPort, err = portsClient.Get(segmentId, *segmentPort.Id)
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
