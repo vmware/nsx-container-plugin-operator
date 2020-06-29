@@ -92,9 +92,11 @@ will be added in clusteroperator nsx-ncp Degraded conditions.
 User needs to set NCP image as an environment parameter `NCP_IMAGE` in `deploy/operator.yaml`.
 
 ### Unsafe changes
-If CIDRs in `clusterNetwork` are already applied, it is unsafe to remove them.
+* If CIDRs in `clusterNetwork` are already applied, it is unsafe to remove them.
 NSX NCP operator won't fail when it detects some existing network CIDRs are deleted,
 but the removal may cause unexpected issues.
+* NSX NCP operator uses tags to mark the container host logical ports, deleting these tags
+from NSX manager will cause network realization failure on corresponding nodes.
 
 ## Contributing
 
