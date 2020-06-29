@@ -252,12 +252,18 @@ func TestGenerateOperatorConfigMap(t *testing.T) {
 	cfg.DeleteSection("nsx_v3")
 	cfg.Section("nsx_node_agent").NewKey("ovs_uplink_port", "eth1")
 	(*data)[ncptypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+	lbSecret := &corev1.Secret{}
+	lbSecret.Data = make(map[string][]byte)
+	lbSecret.Data["tls.crt"] = []byte("mockCrt")
+	lbSecret.Data["tls.key"] = []byte("mockKey")
 
-	GenerateOperatorConfigMap(opConfigMap, ncpConfigMap, agentConfigMap)
+	GenerateOperatorConfigMap(opConfigMap, ncpConfigMap, agentConfigMap, lbSecret)
 	data = &opConfigMap.Data
 	cfg, _ = ini.Load([]byte((*data)[ncptypes.ConfigMapDataKey]))
 	assert.Equal(t, "mockIP", cfg.Section("nsx_v3").Key("nsx_api_managers").Value())
 	assert.Equal(t, "eth1", cfg.Section("nsx_node_agent").Key("ovs_uplink_port").Value())
+	assert.Equal(t, "mockCrt", cfg.Section("operator").Key("lb_default_cert").Value())
+	assert.Equal(t, "mockKey", cfg.Section("operator").Key("lb_priv_key").Value())
 }
 
 func TestIniWriteToString(t *testing.T) {

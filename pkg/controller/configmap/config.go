@@ -333,7 +333,7 @@ func generateConfigMap(srcCfg *ini.File, sections []string) (string, error) {
 }
 
 func GenerateOperatorConfigMap(opConfigmap *corev1.ConfigMap, ncpConfigMap *corev1.ConfigMap,
-	agentConfigMap *corev1.ConfigMap) error {
+	agentConfigMap *corev1.ConfigMap, lbSecret *corev1.Secret) error {
 	ncpCfg, err := ini.Load([]byte(ncpConfigMap.Data[ncptypes.ConfigMapDataKey]))
 	if err != nil {
 		log.Error(err, "Failed to load nsx-ncp ConfigMap")
@@ -360,6 +360,12 @@ func GenerateOperatorConfigMap(opConfigmap *corev1.ConfigMap, ncpConfigMap *core
 			opCfg.Section(name).NewKey(key, sec.Key(key).Value())
 		}
 	}
+	if lbSecret != nil {
+		opCfg.NewSection("operator")
+		opCfg.Section("operator").NewKey("lb_default_cert", string(lbSecret.Data["tls.crt"]))
+		opCfg.Section("operator").NewKey("lb_priv_key", string(lbSecret.Data["tls.key"]))
+	}
+
 	opConfigmap.Data[ncptypes.ConfigMapDataKey], err = iniWriteToString(opCfg)
 	if err != nil {
 		log.Error(err, "Failed to generate operator ConfigMap")
