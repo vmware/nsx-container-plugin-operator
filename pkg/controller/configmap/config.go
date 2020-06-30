@@ -193,7 +193,7 @@ func Render(configmap *corev1.ConfigMap) ([]*unstructured.Unstructured, error) {
 	}
 
 	// Set NCP image
-	ncpImage := os.Getenv("NCP_IMAGE")
+	ncpImage := os.Getenv(ncptypes.NcpImageEnv)
 	if ncpImage == "" {
 		ncpImage = "nsx-ncp:latest"
 	}
