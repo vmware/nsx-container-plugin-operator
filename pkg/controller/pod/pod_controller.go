@@ -204,11 +204,11 @@ func identifyAndGetInstance(resName string) runtime.Object {
 
 func (r *ReconcilePod) identifyAndGetK8SObjToCreate(resName string) *unstructured.Unstructured {
 	if resName == ncptypes.NsxNcpBootstrapDsName {
-		return r.sharedInfo.NsxNcpBootstrapDsSpec
+		return r.sharedInfo.NsxNcpBootstrapDsSpec.DeepCopy()
 	} else if resName == ncptypes.NsxNodeAgentDsName {
-		return r.sharedInfo.NsxNodeAgentDsSpec
+		return r.sharedInfo.NsxNodeAgentDsSpec.DeepCopy()
 	} else {
-		return r.sharedInfo.NsxNcpDeploymentSpec
+		return r.sharedInfo.NsxNcpDeploymentSpec.DeepCopy()
 	}
 }
 
