@@ -13,7 +13,10 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/vmware/go-vmware-nsxt"
+	nsxt "github.com/vmware/go-vmware-nsxt"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
+	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	"github.com/vmware/vsphere-automation-sdk-go/runtime/core"
 	"github.com/vmware/vsphere-automation-sdk-go/runtime/data"
 	vspherelog "github.com/vmware/vsphere-automation-sdk-go/runtime/log"
@@ -22,9 +25,6 @@ import (
 	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/infra/segments"
 	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/model"
 	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/search"
-	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
-	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
-	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	"gopkg.in/ini.v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -48,16 +48,17 @@ var log = logf.Log.WithName("controller_node")
 
 // Add creates a new Node Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
-func Add(mgr manager.Manager, status *statusmanager.StatusManager, _ *sharedinfo.SharedInfo) error {
-	return add(mgr, newReconciler(mgr, status))
+func Add(mgr manager.Manager, status *statusmanager.StatusManager, sharedInfo *sharedinfo.SharedInfo) error {
+	return add(mgr, newReconciler(mgr, status, sharedInfo))
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager, status *statusmanager.StatusManager) reconcile.Reconciler {
+func newReconciler(mgr manager.Manager, status *statusmanager.StatusManager, sharedInfo *sharedinfo.SharedInfo) reconcile.Reconciler {
 	return &ReconcileNode{
-		client: mgr.GetClient(),
-		scheme: mgr.GetScheme(),
-		status: status,
+		client:     mgr.GetClient(),
+		scheme:     mgr.GetScheme(),
+		status:     status,
+		sharedInfo: sharedInfo,
 	}
 }
 
@@ -90,9 +91,10 @@ var _ reconcile.Reconciler = &ReconcileNode{}
 type ReconcileNode struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
-	client client.Client
-	scheme *runtime.Scheme
-	status *statusmanager.StatusManager
+	client     client.Client
+	scheme     *runtime.Scheme
+	status     *statusmanager.StatusManager
+	sharedInfo *sharedinfo.SharedInfo
 }
 
 type NsxClients struct {
@@ -163,14 +165,19 @@ func filterSegmentPorts(nsxClients *NsxClients, ports []*data.StructValue, nodeN
 }
 
 func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
-	// TODO: get configurations from configmap_controller
-	log.Info("Getting NCP configmap for node controller")
-	ncpConfigMap := &corev1.ConfigMap{}
-	err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.NcpConfigMapName}, ncpConfigMap)
-	if err != nil {
-		return nil, err
+	configMap := r.sharedInfo.OperatorConfigMap
+	if configMap == nil {
+		log.Info("Getting config from operator configmap")
+		configMap = &corev1.ConfigMap{}
+		err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.OperatorNamespace, Name: operatortypes.ConfigMapName}, configMap)
+		if err != nil {
+			return nil, err
+		}
 	}
-	data := ncpConfigMap.Data
+	if configMap == nil {
+		return nil, errors.Errorf("Failed to get NSX config from operator ConfigMap")
+	}
+	data := configMap.Data
 	cfg, err := ini.Load([]byte(data[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		return nil, err
@@ -206,17 +213,17 @@ func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 
 	// manager client
 	nsxtClient, err := nsxt.NewAPIClient(&nsxt.Configuration{
-                BasePath: fmt.Sprintf("https://%s/api/v1", managerHost),
-                UserName: user,
-                Password: password,
-                Host:     managerHost,
-                Insecure: true,
-                RetriesConfiguration: nsxt.ClientRetriesConfiguration{
-                        MaxRetries:    1,
-                        RetryMinDelay: 100,
-                        RetryMaxDelay: 500,
-                },
-        })
+		BasePath: fmt.Sprintf("https://%s/api/v1", managerHost),
+		UserName: user,
+		Password: password,
+		Host:     managerHost,
+		Insecure: true,
+		RetriesConfiguration: nsxt.ClientRetriesConfiguration{
+			MaxRetries:    1,
+			RetryMinDelay: 100,
+			RetryMaxDelay: 500,
+		},
+	})
 	if err != nil {
 		return nil, err
 	}
