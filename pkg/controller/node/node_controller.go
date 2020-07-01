@@ -359,7 +359,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Address: nodeAddress,
 			Success: false,
-			Reason:  fmt.Sprintf("Failed to update segment port %s for node %s: %v", segmentPort.Path, nodeName, err),
+			Reason:  fmt.Sprintf("Failed to update segment port %s for node %s: %v", *segmentPort.Path, nodeName, err),
 		}
 		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
