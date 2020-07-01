@@ -21,4 +21,5 @@ const (
 	NetworkType                 string = "ncp"
 	LbCertRenderKey             string = "LbCert"
 	LbKeyRenderKey              string = "LbKey"
+	LbSecret                    string = "lb-secret"
 )
