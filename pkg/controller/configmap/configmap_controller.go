@@ -175,10 +175,18 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			}
 			agentConfigMap = nil
 		}
+		lbSecret := &corev1.Secret{}
+		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: ncptypes.NsxNamespace, Name: ncptypes.LbSecret}, lbSecret)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				log.Error(err, "Failed to get lb-secret")
+			}
+			lbSecret = nil
+		}
 		if ncpConfigMap != nil && agentConfigMap != nil {
 			appliedConfigMap = &corev1.ConfigMap{}
 			appliedConfigMap.Data = make(map[string]string)
-			err = GenerateOperatorConfigMap(appliedConfigMap, ncpConfigMap, agentConfigMap)
+			err = GenerateOperatorConfigMap(appliedConfigMap, ncpConfigMap, agentConfigMap, lbSecret)
 			if err != nil {
 				r.status.SetDegraded(statusmanager.OperatorConfig, "InternalError",
 					fmt.Sprintf("Failed to generate operator ConfigMap: %v", err))

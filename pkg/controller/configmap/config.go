@@ -5,6 +5,7 @@ package configmap
 
 import (
 	"bytes"
+	b64 "encoding/base64"
 	"fmt"
 	"net"
 	"os"
@@ -258,7 +259,9 @@ func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap)
 	for _, name := range currSecs {
 		_, err = prevCfg.GetSection(name)
 		if err != nil {
-			diffSecs = append(diffSecs, name)
+			if len(currCfg.Section(name).KeyStrings()) != 0 {
+				diffSecs = append(diffSecs, name)
+			}
 			continue
 		}
 		if !reflect.DeepEqual(currCfg.Section(name).KeysHash(), prevCfg.Section(name).KeysHash()) {
@@ -269,7 +272,9 @@ func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap)
 	for _, name := range prevSecs {
 		_, err = currCfg.GetSection(name)
 		if err != nil {
-			diffSecs = append(diffSecs, name)
+			if len(prevCfg.Section(name).KeyStrings()) != 0 {
+				diffSecs = append(diffSecs, name)
+			}
 		}
 	}
 	// Check whether different sections impact on NCP and nsx-node-agent
@@ -322,7 +327,7 @@ func generateConfigMap(srcCfg *ini.File, sections []string) (string, error) {
 }
 
 func GenerateOperatorConfigMap(opConfigmap *corev1.ConfigMap, ncpConfigMap *corev1.ConfigMap,
-	agentConfigMap *corev1.ConfigMap) error {
+	agentConfigMap *corev1.ConfigMap, lbSecret *corev1.Secret) error {
 	ncpCfg, err := ini.Load([]byte(ncpConfigMap.Data[ncptypes.ConfigMapDataKey]))
 	if err != nil {
 		log.Error(err, "Failed to load nsx-ncp ConfigMap")
@@ -349,6 +354,12 @@ func GenerateOperatorConfigMap(opConfigmap *corev1.ConfigMap, ncpConfigMap *core
 			opCfg.Section(name).NewKey(key, sec.Key(key).Value())
 		}
 	}
+	if lbSecret != nil {
+		opCfg.NewSection("operator")
+		opCfg.Section("operator").NewKey("lb_default_cert", b64.StdEncoding.EncodeToString(lbSecret.Data["tls.crt"]))
+		opCfg.Section("operator").NewKey("lb_priv_key", b64.StdEncoding.EncodeToString(lbSecret.Data["tls.key"]))
+	}
+
 	opConfigmap.Data[ncptypes.ConfigMapDataKey], err = iniWriteToString(opCfg)
 	if err != nil {
 		log.Error(err, "Failed to generate operator ConfigMap")
