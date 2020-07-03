@@ -18,7 +18,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-network-operator/pkg/render"
 	"github.com/pkg/errors"
-	ncptypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
+	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -30,7 +30,7 @@ const (
 func FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error {
 	errs := []error{}
 	data := &configmap.Data
-	cfg, err := ini.Load([]byte((*data)[ncptypes.ConfigMapDataKey]))
+	cfg, err := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		log.Error(err, "failed to load ConfigMap")
 		return err
@@ -45,7 +45,7 @@ func FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error
 	appendErrorIfNotNil(&errs, fillClusterNetwork(spec, cfg))
 
 	// Write config back to ConfigMap data
-	(*data)[ncptypes.ConfigMapDataKey], err = iniWriteToString(cfg)
+	(*data)[operatortypes.ConfigMapDataKey], err = iniWriteToString(cfg)
 	appendErrorIfNotNil(&errs, err)
 
 	if len(errs) > 0 {
@@ -111,7 +111,7 @@ func validateConfig(cfg *ini.File, sec string, key string) error {
 func validateConfigMap(configmap *corev1.ConfigMap) []error {
 	errs := []error{}
 	data := configmap.Data
-	cfg, err := ini.Load([]byte(data[ncptypes.ConfigMapDataKey]))
+	cfg, err := ini.Load([]byte(data[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		errs = append(errs, errors.Wrapf(err, "failed to load ConfigMap"))
 		return errs
@@ -141,8 +141,8 @@ func getPrefixFromCIDR(cidr string) (uint32, error) {
 
 func validateClusterNetwork(spec *configv1.NetworkSpec) []error {
 	errs := []error{}
-	if strings.ToLower(spec.NetworkType) != ncptypes.NetworkType {
-		appendErrorIfNotNil(&errs, errors.Errorf("network type %s is not %s", spec.NetworkType, ncptypes.NetworkType))
+	if strings.ToLower(spec.NetworkType) != operatortypes.NetworkType {
+		appendErrorIfNotNil(&errs, errors.Errorf("network type %s is not %s", spec.NetworkType, operatortypes.NetworkType))
 		return errs
 	}
 	if len(spec.ClusterNetwork) == 0 {
@@ -178,26 +178,26 @@ func Render(configmap *corev1.ConfigMap) ([]*unstructured.Unstructured, error) {
 
 	// Set configmap data
 	data := configmap.Data
-	cfg, err := ini.Load([]byte(data[ncptypes.ConfigMapDataKey]))
+	cfg, err := ini.Load([]byte(data[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load ConfigMap")
 	}
 	renderData := render.MakeRenderData()
-	renderData.Data[ncptypes.NcpConfigMapRenderKey], err = generateConfigMap(cfg, ncptypes.NcpSections)
+	renderData.Data[operatortypes.NcpConfigMapRenderKey], err = generateConfigMap(cfg, operatortypes.NcpSections)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to render nsx-ncp ConfigMap")
 	}
-	renderData.Data[ncptypes.NodeAgentConfigMapRenderKey], err = generateConfigMap(cfg, ncptypes.AgentSections)
+	renderData.Data[operatortypes.NodeAgentConfigMapRenderKey], err = generateConfigMap(cfg, operatortypes.AgentSections)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to render nsx-node-agent ConfigMap")
 	}
 
 	// Set NCP image
-	ncpImage := os.Getenv(ncptypes.NcpImageEnv)
+	ncpImage := os.Getenv(operatortypes.NcpImageEnv)
 	if ncpImage == "" {
 		ncpImage = "nsx-ncp:latest"
 	}
-	renderData.Data[ncptypes.NcpImageKey] = ncpImage
+	renderData.Data[operatortypes.NcpImageKey] = ncpImage
 
 	// Set NCP replicas
 	haEnabled := false
@@ -208,9 +208,9 @@ func Render(configmap *corev1.ConfigMap) ([]*unstructured.Unstructured, error) {
 		}
 	}
 	if haEnabled {
-		renderData.Data[ncptypes.NcpReplicasKey] = ncptypes.NcpHaReplicas
+		renderData.Data[operatortypes.NcpReplicasKey] = operatortypes.NcpHaReplicas
 	} else {
-		renderData.Data[ncptypes.NcpReplicasKey] = 1
+		renderData.Data[operatortypes.NcpReplicasKey] = 1
 	}
 
 	// Set LB secret
@@ -221,8 +221,8 @@ func Render(configmap *corev1.ConfigMap) ([]*unstructured.Unstructured, error) {
 		lbCert = sec.Key("lb_default_cert").Value()
 		lbKey = sec.Key("lb_priv_key").Value()
 	}
-	renderData.Data[ncptypes.LbCertRenderKey] = lbCert
-	renderData.Data[ncptypes.LbKeyRenderKey] = lbKey
+	renderData.Data[operatortypes.LbCertRenderKey] = lbCert
+	renderData.Data[operatortypes.LbKeyRenderKey] = lbKey
 
 	// Set NSX secret
 	nsxCert := ""
@@ -233,9 +233,9 @@ func Render(configmap *corev1.ConfigMap) ([]*unstructured.Unstructured, error) {
 		nsxKey = sec.Key("nsx_api_private_key").Value()
 		nsxCA = sec.Key("nsx_ca").Value()
 	}
-	renderData.Data[ncptypes.NsxCertRenderKey] = nsxCert
-	renderData.Data[ncptypes.NsxKeyRenderKey] = nsxKey
-	renderData.Data[ncptypes.NsxCARenderKey] = nsxCA
+	renderData.Data[operatortypes.NsxCertRenderKey] = nsxCert
+	renderData.Data[operatortypes.NsxKeyRenderKey] = nsxKey
+	renderData.Data[operatortypes.NsxCARenderKey] = nsxCA
 
 	manifests, err := render.RenderDir(manifestDir, &renderData)
 	if err != nil {
@@ -253,16 +253,16 @@ func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap)
 	currData := currConfig.Data
 	prevData := prevConfig.Data
 	// Compare the whole data
-	if strings.Compare(strings.TrimSpace(currData[ncptypes.ConfigMapDataKey]), strings.TrimSpace(prevData[ncptypes.ConfigMapDataKey])) == 0 {
+	if strings.Compare(strings.TrimSpace(currData[operatortypes.ConfigMapDataKey]), strings.TrimSpace(prevData[operatortypes.ConfigMapDataKey])) == 0 {
 		return false, false, nil
 	}
 	// Compare every section to get different section slice
-	currCfg, err := ini.Load([]byte(currData[ncptypes.ConfigMapDataKey]))
+	currCfg, err := ini.Load([]byte(currData[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		log.Error(err, "Failed to load new ConfigMap")
 		return false, false, err
 	}
-	prevCfg, err := ini.Load([]byte(prevData[ncptypes.ConfigMapDataKey]))
+	prevCfg, err := ini.Load([]byte(prevData[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		log.Error(err, "Failed to load previous ConfigMap")
 		return false, false, err
@@ -296,10 +296,10 @@ func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap)
 		if !ncpNeedChange && sec == "operator" {
 			ncpNeedChange = true
 		}
-		if !ncpNeedChange && inSlice(sec, ncptypes.NcpSections) {
+		if !ncpNeedChange && inSlice(sec, operatortypes.NcpSections) {
 			ncpNeedChange = true
 		}
-		if !agentNeedChange && inSlice(sec, ncptypes.AgentSections) {
+		if !agentNeedChange && inSlice(sec, operatortypes.AgentSections) {
 			agentNeedChange = true
 		}
 		if ncpNeedChange && agentNeedChange {
@@ -341,19 +341,19 @@ func generateConfigMap(srcCfg *ini.File, sections []string) (string, error) {
 
 func GenerateOperatorConfigMap(opConfigmap *corev1.ConfigMap, ncpConfigMap *corev1.ConfigMap,
 	agentConfigMap *corev1.ConfigMap, lbSecret *corev1.Secret) error {
-	ncpCfg, err := ini.Load([]byte(ncpConfigMap.Data[ncptypes.ConfigMapDataKey]))
+	ncpCfg, err := ini.Load([]byte(ncpConfigMap.Data[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		log.Error(err, "Failed to load nsx-ncp ConfigMap")
 		return err
 	}
-	agentCfg, err := ini.Load([]byte(agentConfigMap.Data[ncptypes.ConfigMapDataKey]))
+	agentCfg, err := ini.Load([]byte(agentConfigMap.Data[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		log.Error(err, "Failed to load nsx-node-agent ConfigMap")
 		return err
 	}
 
 	opCfg := ini.Empty()
-	for _, name := range ncptypes.OperatorSections {
+	for _, name := range operatortypes.OperatorSections {
 		sec, err := ncpCfg.GetSection(name)
 		if err != nil {
 			sec, err = agentCfg.GetSection(name)
@@ -373,7 +373,7 @@ func GenerateOperatorConfigMap(opConfigmap *corev1.ConfigMap, ncpConfigMap *core
 		opCfg.Section("operator").NewKey("lb_priv_key", b64.StdEncoding.EncodeToString(lbSecret.Data["tls.key"]))
 	}
 
-	opConfigmap.Data[ncptypes.ConfigMapDataKey], err = iniWriteToString(opCfg)
+	opConfigmap.Data[operatortypes.ConfigMapDataKey], err = iniWriteToString(opCfg)
 	if err != nil {
 		log.Error(err, "Failed to generate operator ConfigMap")
 		return err
