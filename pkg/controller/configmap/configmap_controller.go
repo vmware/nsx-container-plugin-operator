@@ -159,7 +159,21 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, err
 	}
 
-	// Compare with previous configurations
+	// Render configurations
+	objs, err := Render(instance)
+	if err != nil {
+		log.Error(err, "Failed to render configurations")
+		r.status.SetDegraded(statusmanager.OperatorConfig, "RenderConfigError",
+			fmt.Sprintf("Failed to render operator configuration: %v", err))
+		return reconcile.Result{}, err
+	}
+
+	// Update shared info
+	r.updateSharedInfoWithNsxNcpResources(objs)
+	r.sharedInfo.NetworkConfig = networkConfig
+	r.sharedInfo.OperatorConfigMap = instance
+
+	// Generate applied operator ConfigMap
 	if appliedConfigMap == nil {
 		ncpConfigMap := &corev1.ConfigMap{}
 		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.NcpConfigMapName}, ncpConfigMap)
@@ -196,6 +210,8 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			}
 		}
 	}
+
+	// Compare with previous configurations
 	networkConfigChanged := true
 	if r.sharedInfo.NetworkConfig != nil {
 		networkConfigChanged = HasNetworkConfigChange(networkConfig, r.sharedInfo.NetworkConfig)
@@ -204,7 +220,6 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	if err != nil {
 		return reconcile.Result{}, err
 	}
-
 	if !ncpNeedChange && !agentNeedChange {
 		// Check if NCP_IMAGE changes
 		ncpImageChanged, err := r.isNcpImageChanged()
@@ -230,18 +245,6 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			log.Info("NCP image changed")
 		}
 	}
-
-	// Render configurations
-	objs, err := Render(instance)
-	if err != nil {
-		log.Error(err, "Failed to render configurations")
-		r.status.SetDegraded(statusmanager.OperatorConfig, "RenderConfigError",
-			fmt.Sprintf("Failed to render operator configuration: %v", err))
-		return reconcile.Result{}, err
-	}
-
-	r.updateSharedInfoWithNsxNcpResources(objs)
-	r.sharedInfo.NetworkConfig = networkConfig
 
 	// Apply objects to K8s cluster
 	for _, obj := range objs {
@@ -282,7 +285,6 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		}
 	}
 	appliedConfigMap = instance
-	r.sharedInfo.OperatorConfigMap = appliedConfigMap
 
 	// Update network CRD status
 	if networkConfigChanged {
