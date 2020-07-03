@@ -110,7 +110,29 @@ type NsxClients struct {
 
 var cachedNodeSet = map[string](*statusmanager.NodeStatus){}
 
-func searchSegmentPortByNodeNameAddress(nsxClients *NsxClients, nodeName string, nodeAddress string) (*model.SegmentPort, error) {
+func getVcNameByProviderId(nsxClients *NsxClients, nodeName string, providerId string) (string, error) {
+	// providerId has the following format: vsphere://<uuid>
+	if len(providerId) != 46 {
+		return "", errors.Errorf("Invalid provider ID %s of node %s", providerId, nodeName)
+	}
+	providerId = string([]byte(providerId)[10:])
+	nsxClient := nsxClients.ManagerClient
+	vms, _, err := nsxClient.FabricApi.ListVirtualMachines(nsxClient.Context, nil)
+	if err != nil {
+		return "", err
+	}
+	for _, vm := range(vms.Results) {
+		for _, computeId := range(vm.ComputeIds) {
+			// format of computeId: biosUuid:<uuid>
+			if providerId == string([]byte(computeId)[9:]) {
+				return vm.DisplayName, nil
+			}
+		}
+	}
+	return "", errors.Errorf("No virtual machine matches provider ID %s and hostname %s", providerId, nodeName)
+}
+
+func searchNodePortByVcNameAddress(nsxClients *NsxClients, nodeName string, nodeAddress string) (*model.SegmentPort, error) {
 	log.Info(fmt.Sprintf("Searching segment port for node %s", nodeName))
 	connector := nsxClients.PolicyConnector
 	searchClient := search.NewDefaultQueryClient(connector)
@@ -413,7 +435,18 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	}
 
 	cluster := nsxClients.Cluster
-	segmentPort, err := searchSegmentPortByNodeNameAddress(nsxClients, nodeName, nodeAddress)
+	providerId := instance.Spec.ProviderID
+	nodeVcName, err := getVcNameByProviderId(nsxClients, nodeName, providerId)
+	if err != nil {
+		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
+			Address: nodeAddress,
+			Success: false,
+			Reason:  fmt.Sprintf("Error while achieving vsphere name for node %s: %v", nodeName, err),
+		}
+		r.status.SetFromNodes(cachedNodeSet)
+		return reconcile.Result{}, err
+	}
+	segmentPort, err := searchNodePortByVcNameAddress(nsxClients, nodeVcName, nodeAddress)
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Address: nodeAddress,
@@ -425,7 +458,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	}
 	reqLogger.Info("Got the segment port", "segmentPort.Id", *segmentPort.Id, "segmentPort.Path", *segmentPort.Path, "cluster", cluster)
 
-	// TODO: find a way to fill the segmentPort by using the return value from searchSegmentPortByNodeNameAddress then we won't need to invoke the Get API again.
+	// TODO: find a way to fill the segmentPort by using the return value from searchNodePortByVcNameAddress then we won't need to invoke the Get API again.
 	sl := strings.Split(*segmentPort.Path, "/")
 	segmentId := sl[len(sl)-1]
 	portsClient := segments.NewDefaultPortsClient(nsxClients.PolicyConnector)
