@@ -156,6 +156,12 @@ func filterSegmentPorts(nsxClients *NsxClients, ports []*data.StructValue, nodeN
 		portMgrId := string([]byte(portPolicyIdValue)[8:])
 		nsxClient := nsxClients.ManagerClient
 		logicalPort, _, err := nsxClient.LogicalSwitchingApi.GetLogicalPortState(nsxClient.Context, portMgrId)
+		if err != nil {
+			return -1, err
+		}
+		if len(logicalPort.RealizedBindings) == 0 {
+			return -1, errors.Errorf("Segment port %s doesn't have realized bindings", portPolicyId)
+		}
 		address := logicalPort.RealizedBindings[0].Binding.IpAddress
 		if address == nodeAddress {
 			return idx, nil
