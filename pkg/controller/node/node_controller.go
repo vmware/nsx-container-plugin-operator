@@ -9,6 +9,9 @@ import (
 	"strings"
 
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
+	"io/ioutil"
 	"net/http"
 
 	"github.com/pkg/errors"
@@ -170,6 +173,68 @@ func filterSegmentPorts(nsxClients *NsxClients, ports []*data.StructValue, nodeN
 	return -1, errors.Errorf("No port matches")
 }
 
+func getConnectorTLSConfig(insecure bool, clientCertFile string, clientKeyFile string, caFile string) (*tls.Config, error) {
+	tlsConfig := tls.Config{InsecureSkipVerify: insecure}
+
+	if len(clientCertFile) > 0 {
+		if len(clientKeyFile) == 0 {
+			return nil, fmt.Errorf("Please provide key file for client certificate")
+		}
+
+		cert, err := tls.LoadX509KeyPair(clientCertFile, clientKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to load client cert/key pair: %v", err)
+		}
+
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	}
+
+	if len(caFile) > 0 {
+		caCert, err := ioutil.ReadFile(caFile)
+		if err != nil {
+			return nil, err
+		}
+
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+
+		tlsConfig.RootCAs = caCertPool
+	}
+	return &tlsConfig, nil
+}
+
+func decodeData(certData string, keyData string, caData string) ([]byte, []byte, []byte, error) {
+	certDataDecoded, err := base64.StdEncoding.DecodeString(certData)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("Error while decoding certData: %v", err)
+	}
+	keyDataDecoded, err := base64.StdEncoding.DecodeString(keyData)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("Error while decoding keyData: %v", err)
+	}
+	caDataDecoded, err := base64.StdEncoding.DecodeString(caData)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("Error while decoding caData: %v", err)
+	}
+	return certDataDecoded, keyDataDecoded, caDataDecoded, nil
+}
+
+func writeToFile(certPath string, certData []byte, keyPath string, keyData []byte, caPath string, caData []byte) (error) {
+	err := ioutil.WriteFile(certPath, certData, 0644)
+	if err != nil {
+		return fmt.Errorf("Failed to write cert file %s: %v", certPath, err)
+	}
+	err = ioutil.WriteFile(keyPath, keyData, 0644)
+	if err != nil {
+		return fmt.Errorf("Failed to write private key file %s: %v", keyPath, err)
+	}
+	err = ioutil.WriteFile(caPath, caData, 0644)
+	if err != nil {
+		return fmt.Errorf("Failed to write CA file %s: %v", caPath, err)
+	}
+	return nil
+}
+
 func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 	configMap := r.sharedInfo.OperatorConfigMap
 	if configMap == nil {
@@ -193,24 +258,60 @@ func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 	var managerHost = strings.Split(cfg.Section("nsx_v3").Key("nsx_api_managers").Value(), ",")[0]
 	var user = cfg.Section("nsx_v3").Key("nsx_api_user").Value()
 	var password = cfg.Section("nsx_v3").Key("nsx_api_password").Value()
-
+	var insecure = false
+	if strings.ToLower(cfg.Section("nsx_v3").Key("insecure").Value()) == "true" {
+		insecure = true
+	}
 	nsxClients := NsxClients{}
 	nsxClients.Cluster = cluster
 
+	// Get cert/key/ca, then write then into temp files
+	var certData = cfg.Section("operator").Key("nsx_api_cert").Value()
+	var keyData = cfg.Section("operator").Key("nsx_api_private_key").Value()
+	var caData = cfg.Section("operator").Key("nsx_ca").Value()
+	certDataDecoded, keyDataDecoded, caDataDecoded, err := decodeData(certData, keyData, caData)
+	if err != nil {
+		return nil, err
+	}
+
+	tmpCertPath := ""
+	tmpKeyPath := ""
+	tmpCAPath := ""
+	// cert/key is preferred to connect to NSX
+	if len(certDataDecoded) > 0 {
+		tmpCertPath = operatortypes.NsxCertTempPath
+		tmpKeyPath = operatortypes.NsxKeyTempPath
+		tmpCAPath = operatortypes.NsxCATempPath
+		err = writeToFile(tmpCertPath, certDataDecoded, tmpKeyPath, keyDataDecoded, tmpCAPath, caDataDecoded)
+		if err != nil {
+			return nil, err
+		}
+		log.Info("Using cert and private key to connect to NSX")
+	} else {
+		if len(user) == 0 {
+			return nil, errors.Errorf("No credentials for NSX authentication supplied")
+		} else {
+			securityCtx := core.NewSecurityContextImpl()
+			securityCtx.SetProperty(security.AUTHENTICATION_SCHEME_ID, security.USER_PASSWORD_SCHEME_ID)
+			securityCtx.SetProperty(security.USER_KEY, user)
+			securityCtx.SetProperty(security.PASSWORD_KEY, password)
+			nsxClients.PolicySecurityContext = securityCtx
+			log.Info("Using username and password to connect to NSX")
+		}
+	}
+
 	// policy client
-	tlsConfig := tls.Config{InsecureSkipVerify: true}
-	tlsConfig.BuildNameToCertificate()
+	tlsConfig, err := getConnectorTLSConfig(insecure, tmpCertPath, tmpKeyPath, tmpCAPath)
+	if err != nil {
+		return nil, errors.Errorf("Error while achieving tls config: %v", err)
+	}
+
 	tr := &http.Transport{
 		Proxy:           http.ProxyFromEnvironment,
-		TLSClientConfig: &tlsConfig,
+		TLSClientConfig: tlsConfig,
 	}
 	httpClient := http.Client{Transport: tr}
 	nsxClients.PolicyHTTPClient = &httpClient
-	securityCtx := core.NewSecurityContextImpl()
-	securityCtx.SetProperty(security.AUTHENTICATION_SCHEME_ID, security.USER_PASSWORD_SCHEME_ID)
-	securityCtx.SetProperty(security.USER_KEY, user)
-	securityCtx.SetProperty(security.PASSWORD_KEY, password)
-	nsxClients.PolicySecurityContext = securityCtx
 	connector := policyclient.NewRestConnector(fmt.Sprintf("https://%s", managerHost), *nsxClients.PolicyHTTPClient)
 	if nsxClients.PolicySecurityContext != nil {
 		connector.SetSecurityContext(nsxClients.PolicySecurityContext)
@@ -219,11 +320,14 @@ func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 
 	// manager client
 	nsxtClient, err := nsxt.NewAPIClient(&nsxt.Configuration{
-		BasePath: fmt.Sprintf("https://%s/api/v1", managerHost),
-		UserName: user,
-		Password: password,
-		Host:     managerHost,
-		Insecure: true,
+		Host:               managerHost,
+		BasePath:           fmt.Sprintf("https://%s/api/v1", managerHost),
+		UserName:           user,
+		Password:           password,
+		ClientAuthCertFile: tmpCertPath,
+		ClientAuthKeyFile:  tmpKeyPath,
+		CAFile:             tmpCAPath,
+		Insecure:           insecure,
 		RetriesConfiguration: nsxt.ClientRetriesConfiguration{
 			MaxRetries:    1,
 			RetryMinDelay: 100,
@@ -309,7 +413,6 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	}
 
 	cluster := nsxClients.Cluster
-	reqLogger.Info("Searching the logical port for node")
 	segmentPort, err := searchSegmentPortByNodeNameAddress(nsxClients, nodeName, nodeAddress)
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
