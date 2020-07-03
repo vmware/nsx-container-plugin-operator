@@ -22,4 +22,5 @@ const (
 	LbCertRenderKey             string = "LbCert"
 	LbKeyRenderKey              string = "LbKey"
 	LbSecret                    string = "lb-secret"
+	NcpImageEnv                 string = "NCP_IMAGE"
 )

@@ -6,6 +6,7 @@ package configmap
 import (
 	"context"
 	"fmt"
+	"os"
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-network-operator/pkg/apply"
@@ -14,6 +15,7 @@ import (
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
 	ncptypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -198,11 +200,22 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	if err != nil {
 		return reconcile.Result{}, err
 	}
+
 	if !ncpNeedChange && !agentNeedChange {
-		log.Info("no new configuration needs to apply")
-		r.status.SetNotDegraded(statusmanager.ClusterConfig)
-		r.status.SetNotDegraded(statusmanager.OperatorConfig)
-		return reconcile.Result{}, nil
+		// Check if NCP_IMAGE changes
+		ncpImageChanged, err := r.isNcpImageChanged()
+		if err != nil {
+			return reconcile.Result{Requeue: true}, err
+		}
+
+		if !ncpImageChanged {
+			log.Info("no new configuration needs to apply")
+			r.status.SetNotDegraded(statusmanager.ClusterConfig)
+			r.status.SetNotDegraded(statusmanager.OperatorConfig)
+			return reconcile.Result{}, nil
+		} else {
+			log.Info("NCP image changed")
+		}
 	}
 
 	// Render configurations
@@ -338,4 +351,22 @@ func (r *ReconcileConfigMap) updateSharedInfoWithNsxNcpResources(objs []*unstruc
 		}
 	}
 	log.Info("Updated shared info with Nsx Ncp Resources")
+}
+
+func (r *ReconcileConfigMap) isNcpImageChanged() (bool, error) {
+	ncpDeployment := &appsv1.Deployment{}
+	err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: ncptypes.NsxNamespace, Name: ncptypes.NsxNcpDeploymentName},
+		ncpDeployment)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return true, nil
+		}
+		return false, err
+	}
+	prevImage := ncpDeployment.Spec.Template.Spec.Containers[0].Image
+	currImage := os.Getenv(ncptypes.NcpImageEnv)
+	if prevImage != currImage {
+		return true, nil
+	}
+	return false, nil
 }
