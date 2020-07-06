@@ -14,7 +14,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
-	ncptypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
+	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -97,9 +97,9 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
 	// Check request namespace and name to ignore other changes
-	if request.Namespace == ncptypes.OperatorNamespace && request.Name == ncptypes.ConfigMapName {
+	if request.Namespace == operatortypes.OperatorNamespace && request.Name == operatortypes.ConfigMapName {
 		reqLogger.Info("Reconciling nsx-ncp-operator ConfigMap change")
-	} else if request.Namespace == "" && request.Name == ncptypes.NetworkCRDName {
+	} else if request.Namespace == "" && request.Name == operatortypes.NetworkCRDName {
 		reqLogger.Info("Reconciling cluster Network CRD change")
 	} else {
 		return reconcile.Result{}, nil
@@ -108,8 +108,8 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	// Fetch the ConfigMap instance
 	instance := &corev1.ConfigMap{}
 	instanceName := types.NamespacedName{
-		Namespace: ncptypes.OperatorNamespace,
-		Name:      ncptypes.ConfigMapName,
+		Namespace: operatortypes.OperatorNamespace,
+		Name:      operatortypes.ConfigMapName,
 	}
 	err := r.client.Get(context.TODO(), instanceName, instance)
 	if err != nil {
@@ -117,9 +117,9 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			// Request object not found, could have been deleted after reconcile request.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
-			log.Info(fmt.Sprintf("%s ConfigMap is not found", ncptypes.ConfigMapName))
+			log.Info(fmt.Sprintf("%s ConfigMap is not found", operatortypes.ConfigMapName))
 			r.status.SetDegraded(statusmanager.OperatorConfig, "NoOperatorConfig",
-				fmt.Sprintf("%s ConfigMap is not found", ncptypes.ConfigMapName))
+				fmt.Sprintf("%s ConfigMap is not found", operatortypes.ConfigMapName))
 			return reconcile.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
@@ -130,7 +130,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 
 	// Get network CRD configuration
 	networkConfig := &configv1.Network{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: ncptypes.NetworkCRDName}, networkConfig)
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: operatortypes.NetworkCRDName}, networkConfig)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -162,7 +162,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	// Compare with previous configurations
 	if appliedConfigMap == nil {
 		ncpConfigMap := &corev1.ConfigMap{}
-		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: ncptypes.NsxNamespace, Name: ncptypes.NcpConfigMapName}, ncpConfigMap)
+		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.NcpConfigMapName}, ncpConfigMap)
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
 				log.Error(err, "Failed to get nsx-ncp ConfigMap")
@@ -170,7 +170,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			ncpConfigMap = nil
 		}
 		agentConfigMap := &corev1.ConfigMap{}
-		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: ncptypes.NsxNamespace, Name: ncptypes.NodeAgentConfigMapName}, agentConfigMap)
+		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.NodeAgentConfigMapName}, agentConfigMap)
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
 				log.Error(err, "Failed to get nsx-node-agent ConfigMap")
@@ -178,7 +178,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			agentConfigMap = nil
 		}
 		lbSecret := &corev1.Secret{}
-		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: ncptypes.NsxNamespace, Name: ncptypes.LbSecret}, lbSecret)
+		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.LbSecret}, lbSecret)
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
 				log.Error(err, "Failed to get lb-secret")
@@ -251,20 +251,20 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 
 	// Delete old NCP and nsx-node-agent pods
 	if appliedConfigMap != nil && ncpNeedChange {
-		err = deleteExistingPods(r.client, ncptypes.NsxNcpDeploymentName)
+		err = deleteExistingPods(r.client, operatortypes.NsxNcpDeploymentName)
 		if err != nil {
 			r.status.SetDegraded(statusmanager.OperatorConfig, "DeleteOldPodsError",
 				fmt.Sprintf("Deployment %s is not using the latest configuration updates because: %v",
-					ncptypes.NsxNcpDeploymentName, err))
+					operatortypes.NsxNcpDeploymentName, err))
 			return reconcile.Result{}, err
 		}
 	}
 	if appliedConfigMap != nil && agentNeedChange {
-		err = deleteExistingPods(r.client, ncptypes.NsxNodeAgentDsName)
+		err = deleteExistingPods(r.client, operatortypes.NsxNodeAgentDsName)
 		if err != nil {
 			r.status.SetDegraded(statusmanager.OperatorConfig, "DeleteOldPodsError",
 				fmt.Sprintf("DaemonSet %s is not using the latest configuration updates because: %v",
-					ncptypes.NsxNodeAgentDsName, err))
+					operatortypes.NsxNodeAgentDsName, err))
 			return reconcile.Result{}, err
 		}
 	}
@@ -330,7 +330,7 @@ func deleteExistingPods(c client.Client, component string) error {
 	var period int64 = 0
 	policy := metav1.DeletePropagationForeground
 	label := map[string]string{"component": component}
-	err := c.DeleteAllOf(context.TODO(), &corev1.Pod{}, client.InNamespace(ncptypes.NsxNamespace),
+	err := c.DeleteAllOf(context.TODO(), &corev1.Pod{}, client.InNamespace(operatortypes.NsxNamespace),
 		client.MatchingLabels(label), client.PropagationPolicy(policy), client.GracePeriodSeconds(period))
 	if err != nil {
 		log.Error(err, fmt.Sprintf("Failed to delete pod %s", component))
@@ -342,11 +342,11 @@ func deleteExistingPods(c client.Client, component string) error {
 
 func (r *ReconcileConfigMap) updateSharedInfoWithNsxNcpResources(objs []*unstructured.Unstructured) {
 	for _, obj := range objs {
-		if obj.GetName() == ncptypes.NsxNodeAgentDsName {
+		if obj.GetName() == operatortypes.NsxNodeAgentDsName {
 			r.sharedInfo.NsxNodeAgentDsSpec = obj.DeepCopy()
-		} else if obj.GetName() == ncptypes.NsxNcpBootstrapDsName {
+		} else if obj.GetName() == operatortypes.NsxNcpBootstrapDsName {
 			r.sharedInfo.NsxNcpBootstrapDsSpec = obj.DeepCopy()
-		} else if obj.GetName() == ncptypes.NsxNcpDeploymentName {
+		} else if obj.GetName() == operatortypes.NsxNcpDeploymentName {
 			r.sharedInfo.NsxNcpDeploymentSpec = obj.DeepCopy()
 		}
 	}
@@ -355,7 +355,7 @@ func (r *ReconcileConfigMap) updateSharedInfoWithNsxNcpResources(objs []*unstruc
 
 func (r *ReconcileConfigMap) isNcpImageChanged() (bool, error) {
 	ncpDeployment := &appsv1.Deployment{}
-	err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: ncptypes.NsxNamespace, Name: ncptypes.NsxNcpDeploymentName},
+	err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.NsxNcpDeploymentName},
 		ncpDeployment)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -364,7 +364,7 @@ func (r *ReconcileConfigMap) isNcpImageChanged() (bool, error) {
 		return false, err
 	}
 	prevImage := ncpDeployment.Spec.Template.Spec.Containers[0].Image
-	currImage := os.Getenv(ncptypes.NcpImageEnv)
+	currImage := os.Getenv(operatortypes.NcpImageEnv)
 	if prevImage != currImage {
 		return true, nil
 	}

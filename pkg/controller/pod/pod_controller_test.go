@@ -11,7 +11,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
-	ncptypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
+	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -208,8 +208,8 @@ func (r *ReconcilePod) testReconcileOnWatchedResourceWhenDeleted(t *testing.T) {
 	// Validate that reconcile recreated the deployment
 	instance := &appsv1.Deployment{}
 	instanceDetails := types.NamespacedName{
-		Namespace: ncptypes.NsxNamespace,
-		Name:      ncptypes.NsxNcpDeploymentName,
+		Namespace: operatortypes.NsxNamespace,
+		Name:      operatortypes.NsxNcpDeploymentName,
 	}
 	err = r.client.Get(context.TODO(), instanceDetails, instance)
 	if err != nil {
@@ -228,13 +228,13 @@ func TestPodControllerReconcile(t *testing.T) {
 }
 
 func TestPodController_identifyAndGetInstance(t *testing.T) {
-	if !reflect.DeepEqual(identifyAndGetInstance(ncptypes.NsxNcpDeploymentName), &appsv1.Deployment{}) {
+	if !reflect.DeepEqual(identifyAndGetInstance(operatortypes.NsxNcpDeploymentName), &appsv1.Deployment{}) {
 		t.Fatalf("nsx-ncp instance must be a Deployment")
 	}
-	if !reflect.DeepEqual(identifyAndGetInstance(ncptypes.NsxNcpBootstrapDsName), &appsv1.DaemonSet{}) {
+	if !reflect.DeepEqual(identifyAndGetInstance(operatortypes.NsxNcpBootstrapDsName), &appsv1.DaemonSet{}) {
 		t.Fatalf("nsx-ncp instance must be a DaemonSet")
 	}
-	if !reflect.DeepEqual(identifyAndGetInstance(ncptypes.NsxNodeAgentDsName), &appsv1.DaemonSet{}) {
+	if !reflect.DeepEqual(identifyAndGetInstance(operatortypes.NsxNodeAgentDsName), &appsv1.DaemonSet{}) {
 		t.Fatalf("nsx-ncp instance must be a DaemonSet")
 	}
 }

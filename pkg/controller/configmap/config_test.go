@@ -12,7 +12,7 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/pkg/errors"
-	ncptypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
+	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	"gopkg.in/ini.v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/kubectl/pkg/scheme"
@@ -25,9 +25,9 @@ func init() {
 func createMockConfigMap() *corev1.ConfigMap {
 	mockConfigMap := &corev1.ConfigMap{Data: map[string]string{}}
 	data := &mockConfigMap.Data
-	cfg, _ := ini.Load([]byte((*data)[ncptypes.ConfigMapDataKey]))
-	cfg.NewSections(ncptypes.OperatorSections...)
-	(*data)[ncptypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+	cfg, _ := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+	cfg.NewSections(operatortypes.OperatorSections...)
+	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
 
 	return mockConfigMap
 }
@@ -51,7 +51,7 @@ func TestFillDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to fill default config")
 	}
-	cfg, err := ini.Load([]byte((*data)[ncptypes.ConfigMapDataKey]))
+	cfg, err := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 	assert.Equal(t, "openshift4", cfg.Section("coe").Key("adaptor").Value())
 	assert.Equal(t, "True", cfg.Section("nsx_v3").Key("policy_nsxapi").Value())
 	assert.Equal(t, "True", cfg.Section("nsx_v3").Key("single_tier_topology").Value())
@@ -74,7 +74,7 @@ func TestAppendErrorIfNotNil(t *testing.T) {
 
 func TestFillDefault(t *testing.T) {
 	cfg := ini.Empty()
-	cfg.NewSections(ncptypes.OperatorSections...)
+	cfg.NewSections(operatortypes.OperatorSections...)
 
 	fillDefault(cfg, "DEFAULT", "debug", "True", false)
 	assert.Equal(t, "True", cfg.Section("DEFAULT").Key("debug").Value())
@@ -91,7 +91,7 @@ func TestFillClusterNetwork(t *testing.T) {
 	mockConfigMap := createMockConfigMap()
 	mockNetworkSpec := createMockNetworkSpec(cidrs)
 	data := &mockConfigMap.Data
-	cfg, _ := ini.Load([]byte((*data)[ncptypes.ConfigMapDataKey]))
+	cfg, _ := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 
 	fillClusterNetwork(mockNetworkSpec, cfg)
 	assert.Equal(t, "10.0.0.0/16,20.0.0.0/14", cfg.Section("nsx_v3").Key("container_ip_blocks").Value())
@@ -126,12 +126,12 @@ func TestValidateConfigMap(t *testing.T) {
 	assert.Equal(t, 3, len(errs))
 
 	data := &mockConfigMap.Data
-	cfg, _ := ini.Load([]byte((*data)[ncptypes.ConfigMapDataKey]))
+	cfg, _ := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 	cfg.Section("coe").NewKey("cluster", "mockCluster")
 	cfg.Section("nsx_v3").NewKey("nsx_api_managers", "mockIP")
 	cfg.Section("coe").NewKey("enable_snat", "False")
 	cfg.Section("nsx_v3").NewKey("tier0_gateway", "mockT0")
-	(*data)[ncptypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
 
 	errs = validateConfigMap(mockConfigMap)
 	assert.Empty(t, errs)
@@ -193,10 +193,10 @@ func TestNeedApplyChange(t *testing.T) {
 	assert.Nil(t, err)
 
 	data := &prevConfigMap.Data
-	cfg, _ := ini.Load([]byte((*data)[ncptypes.ConfigMapDataKey]))
+	cfg, _ := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 
 	cfg.Section("nsx_node_agent").NewKey("ovs_uplink_port", "eth1")
-	(*data)[ncptypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
 	ncpNeedChange, agetnNeedChange, err = NeedApplyChange(currConfigMap, prevConfigMap)
 	assert.False(t, ncpNeedChange)
 	assert.True(t, agetnNeedChange)
@@ -204,7 +204,7 @@ func TestNeedApplyChange(t *testing.T) {
 
 	cfg.Section("nsx_node_agent").DeleteKey("ovs_uplink_port")
 	cfg.Section("DEFAULT").NewKey("debug", "True")
-	(*data)[ncptypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
 	ncpNeedChange, agetnNeedChange, err = NeedApplyChange(currConfigMap, prevConfigMap)
 	assert.True(t, ncpNeedChange)
 	assert.True(t, agetnNeedChange)
@@ -240,16 +240,16 @@ func TestGenerateOperatorConfigMap(t *testing.T) {
 	opConfigMap := createMockConfigMap()
 	ncpConfigMap := createMockConfigMap()
 	data := &ncpConfigMap.Data
-	cfg, _ := ini.Load([]byte((*data)[ncptypes.ConfigMapDataKey]))
+	cfg, _ := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 	cfg.DeleteSection("nsx_node_agent")
 	cfg.Section("nsx_v3").NewKey("nsx_api_managers", "mockIP")
-	(*data)[ncptypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
 	agentConfigMap := createMockConfigMap()
 	data = &agentConfigMap.Data
-	cfg, _ = ini.Load([]byte((*data)[ncptypes.ConfigMapDataKey]))
+	cfg, _ = ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 	cfg.DeleteSection("nsx_v3")
 	cfg.Section("nsx_node_agent").NewKey("ovs_uplink_port", "eth1")
-	(*data)[ncptypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
 	lbSecret := &corev1.Secret{}
 	lbSecret.Data = make(map[string][]byte)
 	lbSecret.Data["tls.crt"] = []byte("mockCrt")
@@ -257,7 +257,7 @@ func TestGenerateOperatorConfigMap(t *testing.T) {
 
 	GenerateOperatorConfigMap(opConfigMap, ncpConfigMap, agentConfigMap, lbSecret)
 	data = &opConfigMap.Data
-	cfg, _ = ini.Load([]byte((*data)[ncptypes.ConfigMapDataKey]))
+	cfg, _ = ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 	assert.Equal(t, "mockIP", cfg.Section("nsx_v3").Key("nsx_api_managers").Value())
 	assert.Equal(t, "eth1", cfg.Section("nsx_node_agent").Key("ovs_uplink_port").Value())
 	assert.Equal(t, base64.StdEncoding.EncodeToString([]byte("mockCrt")),

@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
-	ncptypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
+	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -48,21 +48,21 @@ func Add(mgr manager.Manager, status *statusmanager.StatusManager, sharedInfo *s
 }
 
 func getNsxSystemNsName() string {
-	return ncptypes.NsxNamespace
+	return operatortypes.NsxNamespace
 }
 
 func getNsxNcpDeployments(nsxSystemNs string) []types.NamespacedName {
 	return []types.NamespacedName{
 		// We reconcile only these K8s resources
-		{Namespace: nsxSystemNs, Name: ncptypes.NsxNcpDeploymentName},
+		{Namespace: nsxSystemNs, Name: operatortypes.NsxNcpDeploymentName},
 	}
 }
 
 func getNsxNcpDs(nsxSystemNs string) []types.NamespacedName {
 	return []types.NamespacedName{
 		// We reconcile only these K8s resources
-		{Namespace: nsxSystemNs, Name: ncptypes.NsxNodeAgentDsName},
-		{Namespace: nsxSystemNs, Name: ncptypes.NsxNcpBootstrapDsName},
+		{Namespace: nsxSystemNs, Name: operatortypes.NsxNodeAgentDsName},
+		{Namespace: nsxSystemNs, Name: operatortypes.NsxNcpBootstrapDsName},
 	}
 }
 
@@ -162,7 +162,7 @@ func (r *ReconcilePod) Reconcile(request reconcile.Request) (reconcile.Result, e
 func (r *ReconcilePod) recreateNsxNcpResourceIfDeleted(resName string) error {
 	instance := identifyAndGetInstance(resName)
 	instanceDetails := types.NamespacedName{
-		Namespace: ncptypes.NsxNamespace,
+		Namespace: operatortypes.NsxNamespace,
 		Name:      resName,
 	}
 
@@ -195,7 +195,7 @@ func (r *ReconcilePod) recreateNsxNcpResourceIfDeleted(resName string) error {
 }
 
 func identifyAndGetInstance(resName string) runtime.Object {
-	if resName == ncptypes.NsxNcpBootstrapDsName || resName == ncptypes.NsxNodeAgentDsName {
+	if resName == operatortypes.NsxNcpBootstrapDsName || resName == operatortypes.NsxNodeAgentDsName {
 		return &appsv1.DaemonSet{}
 	} else {
 		return &appsv1.Deployment{}
@@ -203,9 +203,9 @@ func identifyAndGetInstance(resName string) runtime.Object {
 }
 
 func (r *ReconcilePod) identifyAndGetK8SObjToCreate(resName string) *unstructured.Unstructured {
-	if resName == ncptypes.NsxNcpBootstrapDsName {
+	if resName == operatortypes.NsxNcpBootstrapDsName {
 		return r.sharedInfo.NsxNcpBootstrapDsSpec.DeepCopy()
-	} else if resName == ncptypes.NsxNodeAgentDsName {
+	} else if resName == operatortypes.NsxNodeAgentDsName {
 		return r.sharedInfo.NsxNodeAgentDsSpec.DeepCopy()
 	} else {
 		return r.sharedInfo.NsxNcpDeploymentSpec.DeepCopy()
