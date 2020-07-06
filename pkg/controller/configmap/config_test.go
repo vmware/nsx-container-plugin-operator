@@ -220,6 +220,18 @@ func TestInSlice(t *testing.T) {
 	assert.True(t, inSlice(str, strs))
 }
 
+func TestStringSliceEqual(t *testing.T) {
+	slice1 := []string{"a", "b"}
+    slice2 := []string{"b", "a"}
+    assert.True(t, stringSliceEqual(slice1, slice2))
+    slice1 = []string{"b", "c"}
+    assert.False(t, stringSliceEqual(slice1, slice2))
+    slice1 = []string{"x", "y"}
+    assert.False(t, stringSliceEqual(slice1, slice2))
+    slice2 = []string{"x", "y"}
+    assert.True(t, stringSliceEqual(slice1, slice2))
+}
+
 func TestGenerateConfigMap(t *testing.T) {
 	cfg := ini.Empty()
 	cfg.NewSections("sec1", "sec2", "sec3")
