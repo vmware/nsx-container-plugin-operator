@@ -246,6 +246,23 @@ func Render(configmap *corev1.ConfigMap) ([]*unstructured.Unstructured, error) {
 	return objs, nil
 }
 
+func HasNetworkConfigChange(currConfig *configv1.Network, prevConfig *configv1.Network) bool {
+    // only detect changes in spec.ClusterNetwork and spec.ServiceNetwork
+    if !stringSliceEqual(currConfig.Spec.ServiceNetwork, prevConfig.Spec.ServiceNetwork) {
+        // no point to check CIDRs as well
+        return true
+    }
+    currCidrs := []string{}
+    for _, cnet := range currConfig.Spec.ClusterNetwork {
+		currCidrs = append(currCidrs, cnet.CIDR)
+	}
+    prevCidrs := []string{}
+    for _, cnet := range prevConfig.Spec.ClusterNetwork {
+		prevCidrs = append(prevCidrs, cnet.CIDR)
+	}
+    return stringSliceEqual(currCidrs, prevCidrs)
+}
+
 func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap) (ncpNeedChange bool, agentNeedChange bool, err error) {
 	if prevConfig == nil {
 		return true, true, nil
@@ -320,6 +337,18 @@ func inSlice(str string, s []string) bool {
 		}
 	}
 	return false
+}
+
+func stringSliceEqual(a, b []string) bool {
+    if len(a) != len(b) {
+        return false
+    }
+    for _, v := range a {
+        if !inSlice(v, b) {
+            return false
+        }
+    }
+    return true
 }
 
 func generateConfigMap(srcCfg *ini.File, sections []string) (string, error) {

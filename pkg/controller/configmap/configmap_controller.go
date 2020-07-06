@@ -196,6 +196,10 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			}
 		}
 	}
+	networkConfigChanged := true
+	if r.sharedInfo.NetworkConfig != nil {
+		networkConfigChanged = HasNetworkConfigChange(networkConfig, r.sharedInfo.NetworkConfig)
+	}
 	ncpNeedChange, agentNeedChange, err := NeedApplyChange(instance, appliedConfigMap)
 	if err != nil {
 		return reconcile.Result{}, err
@@ -210,6 +214,15 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 
 		if !ncpImageChanged {
 			log.Info("no new configuration needs to apply")
+			// Check if network config status must be updated
+			if networkConfigChanged {
+				err = updateNetworkStatus(networkConfig, r)
+				if err != nil {
+					r.status.SetDegraded(statusmanager.ClusterConfig, "UpdateNetworkStatusError",
+						fmt.Sprintf("Failed to update network status: %v", err))
+				}
+				return reconcile.Result{}, err
+			}
 			r.status.SetNotDegraded(statusmanager.ClusterConfig)
 			r.status.SetNotDegraded(statusmanager.OperatorConfig)
 			return reconcile.Result{}, nil
@@ -272,11 +285,13 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	r.sharedInfo.OperatorConfigMap = appliedConfigMap
 
 	// Update network CRD status
-	err = updateNetworkStatus(networkConfig, r)
-	if err != nil {
-		r.status.SetDegraded(statusmanager.ClusterConfig, "UpdateNetworkStatusError",
-			fmt.Sprintf("Failed to update network status: %v", err))
-		return reconcile.Result{}, err
+	if networkConfigChanged {
+		err = updateNetworkStatus(networkConfig, r)
+		if err != nil {
+			r.status.SetDegraded(statusmanager.ClusterConfig, "UpdateNetworkStatusError",
+				fmt.Sprintf("Failed to update network status: %v", err))
+			return reconcile.Result{}, err
+		}
 	}
 
 	r.status.SetNotDegraded(statusmanager.ClusterConfig)
@@ -285,7 +300,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 }
 
 func updateNetworkStatus(networkConfig *configv1.Network, r *ReconcileConfigMap) error {
-	status := getNetworkCRD(networkConfig)
+	status := buildNetworkStatus(networkConfig)
 	// Render information
 	networkConfig.Status = status
 	data, err := k8sutil.ToUnstructured(networkConfig)
@@ -308,7 +323,7 @@ func updateNetworkStatus(networkConfig *configv1.Network, r *ReconcileConfigMap)
 	return nil
 }
 
-func getNetworkCRD(networkConfig *configv1.Network) configv1.NetworkStatus {
+func buildNetworkStatus(networkConfig *configv1.Network) configv1.NetworkStatus {
 	// Values extracted from spec are serviceNetwork and clusterNetworkCIDR.
 	// HostPrefix is ignored.
 	status := configv1.NetworkStatus{}
