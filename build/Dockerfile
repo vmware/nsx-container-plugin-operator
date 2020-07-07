@@ -1,8 +1,9 @@
-FROM golang:1.13 AS builder
+FROM registry.access.redhat.com/ubi8/ubi:latest AS builder
 
 WORKDIR /nsx-ncp-operator
 COPY . /nsx-ncp-operator
-RUN go build -o /nsx-ncp-operator/build/bin/nsx-ncp-operator ./cmd/manager
+RUN yum -y install go-toolset && \
+    go build -o /nsx-ncp-operator/build/bin/nsx-ncp-operator ./cmd/manager
 
 FROM registry.access.redhat.com/ubi8/ubi:latest
 
