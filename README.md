@@ -55,7 +55,7 @@ Building the nsx-container-plugin operator is very simple. From the project root
 directory simply type the following command.
 
 ```
-docker build -f build/Dockerfile .
+make all
 ```
 
 At the moment the nsx-container-plugin operator only works on Openshift 4
