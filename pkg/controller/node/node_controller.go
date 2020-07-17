@@ -136,10 +136,10 @@ func searchNodePortByVcNameAddress(nsxClients *NsxClients, nodeName string, node
 	log.Info(fmt.Sprintf("Searching segment port for node %s", nodeName))
 	connector := nsxClients.PolicyConnector
 	searchClient := search.NewDefaultQueryClient(connector)
-	// If multiple node VMs have the same name, the index postfix will be added to the segment port name, e.g.
-	//   1. compute-0/compute-0.vmx@<tn-id> ("compute-0" is a node VM name)
-	//   2. compute-0_2/compute-0.vmx@<tn-id>
-	searchString := fmt.Sprintf("resource_type:SegmentPort AND display_name:%s*\\/%s.vmx*", nodeName, nodeName)
+	// The format of node segment port display_name:
+	//   <vmx file's parent directory name>/<node vSphere name>.vmx@<tn-id>
+	// The vmx file's parent directory name can include VM name or a uid string for a vSAN VM
+	searchString := fmt.Sprintf("resource_type:SegmentPort AND display_name:*\\/%s.vmx*", nodeName)
 	ports, err := searchClient.List(searchString, nil, nil, nil, nil, nil)
 	if err != nil {
 		return nil, err
