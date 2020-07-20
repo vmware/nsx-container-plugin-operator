@@ -8,23 +8,13 @@ data:
 
     [vc]
 
-    # IpAddress or Hostname of VC
-    #vc_endpoint = <None>
-
-    # The SSO domain associated with the deployment
-    #sso_domain = vsphere.local
-
-    # VC API server HTTPS port.
-    #https_port = 443
-
-
     [coe]
 
     # Container orchestrator adaptor to plug in.
     adaptor = openshift4
 
     # Specify cluster for adaptor.
-    cluster = openshift
+    # cluster = {cluster_name}
 
     # Log level for NCP operations
     # Choices: NOTSET DEBUG INFO WARNING ERROR CRITICAL
@@ -47,10 +37,6 @@ data:
     # Name of log file for outputting metrics only (if not defined, use default
     # logging facility)
     #metrics_log_file = <None>
-
-    # The type of container host node
-    # Choices: HOSTVM BAREMETAL CLOUD WCP_WORKER
-    #node_type = HOSTVM
 
     # The time in seconds for NCP/nsx_node_agent to recover the connection to
     # NSX manager/container orchestrator adaptor/Hyperbus before exiting. If
@@ -87,17 +73,10 @@ data:
     # Total number of compressed backup files to store. Defaults to 5.
     #log_rotation_backup_count = 5
 
-
-
-
     [nsx_v3]
 
-    # Set NSX API adaptor to NSX Policy API adaptor. If unset, NSX adaptor will
-    # be set to the NSX Manager based adaptor. If unset or False, the NSX
-    # resource ID in other options can be resource name or UUID
+    # Set NSX API adaptor to NSX Policy API adaptor.
     policy_nsxapi = True
-
-
 
     # Path to NSX client certificate file. If specified, the nsx_api_user and
     # nsx_api_password options will be ignored. Must be specified along with
@@ -171,10 +150,6 @@ data:
     # Subnet prefix for v6 IP blocks
     #v6_subnet_prefix = 64
 
-
-    # Indicates whether distributed firewall DENY rules are logged.
-    #log_dropped_traffic = False
-
     # Indicates whether distributed firewall rules are logged. Option 'ALL'
     # will enable logging for all DFW rules (both DENY and ALLOW), and option
     # 'DENY' will enable logging only for DENY rules. Remove this config if no
@@ -231,12 +206,6 @@ data:
     # Choices: <None> source_ip
     #l4_persistence = <None>
 
-    # Option to set distributed load balancer source ip persistence option,
-    # only available when use_native_dlb = True
-    # Choices: <None> source_ip
-    #dlb_l4_persistence = <None>
-
-
     # Resource ID of the container ip blocks that will be used for creating
     # subnets for no-SNAT projects. If specified, no-SNAT projects will use
     # these ip blocks ONLY. Otherwise they will use container_ip_blocks
@@ -272,10 +241,6 @@ data:
     # hosting containers are deployed must be enabled on this transport zone
     #overlay_tz = <None>
 
-    # Name of the enforcement point used to look up overlay transport zones and
-    # edge cluster paths, e.g. vmc-enforcementpoint, default, etc.
-    #enforcement_point = <None>
-
     # Resource ID of the lb service that can be attached by virtual servers
     #lb_service = <None>
 
@@ -293,41 +258,13 @@ data:
     # Choices: <None> INSERT REPLACE
     #x_forwarded_for = <None>
 
-
-    # Resource ID of the firewall section that will be used to create firewall
-    # sections below this mark section
-    #top_firewall_section_marker = <None>
-
-    # Resource ID of the firewall section that will be used to create firewall
-    # sections above this mark section
-    #bottom_firewall_section_marker = <None>
-
     # Replication mode of container logical switch, set SOURCE for cloud as it
     # only supports head replication mode
     # Choices: MTEP SOURCE
     #ls_replication_mode = MTEP
 
-
-
-    # The resource which NCP will search tag 'node_name' on, to get parent VIF
-    # or transport node uuid for container LSP API context field. For HOSTVM
-    # mode, it will search tag on LSP. For BM mode, it will search tag on LSP
-    # then search TN. For CLOUD mode, it will search tag on VM. For WCP_WORKER
-    # mode, it will search TN by hostname.
-    # Choices: tag_on_lsp tag_on_tn tag_on_vm hostname_on_tn
-    #search_node_tag_on = tag_on_lsp
-
-    # Determines which kind of information to be used as VIF app_id. Defaults
-    # to pod_resource_key. In WCP mode, pod_uid is used.
-    # Choices: pod_resource_key pod_uid
-    #vif_app_id_type = pod_resource_key
-
-
     # If this value is not empty, NCP will append it to nameserver list
     #dns_servers = []
-
-    # Set this to True to enable NCP to report errors through NSXError CRD.
-    #enable_nsx_err_crd = False
 
     # Maximum number of virtual servers allowed to create in cluster for
     # LoadBalancer type of services.
@@ -339,10 +276,6 @@ data:
 
     # Inventory feature switch
     #enable_inventory = True
-
-
-
-
 
     # For internal container network CIDR, NCP adds redistribution deny rule to
     # stop T0 router advertise subnets to external network outside of T0
@@ -505,11 +438,6 @@ data:
     # User specified IP address for HTTP and HTTPS ingresses
     #http_and_https_ingress_ip = <None>
 
-    # Set this to True to enable NCP to create tier1 router, first segment and
-    # default SNAT IP for VirtualNetwork CRD, and then create segment port for
-    # VM through VirtualNetworkInterface CRD.
-    #enable_vnet_crd = False
-
     # Set this to True to enable NCP to create LoadBalancer on a Tier-1 for
     # LoadBalancer CRD. This option does not support LB autoscaling.
     #enable_lb_crd = False
@@ -540,43 +468,22 @@ data:
     # secondary interfaces. Default gateway of pod is configured by primary
     # interface. User must define IP and/or MAC if no "ipam" is configured.Only
     # available if node type is HOSTVM
-    #enable_multus = True
-
+    enable_multus = False
 
     # Interval of polling loadbalancer statistics. Default to60 seconds.
     #lb_statistic_monitor_interval = 60
 
     # This option is for toggling process of network CRD.It should be set to
     # False when the network status setting is done by OCP4 NetworkOperator
-    #process_oc_network = True
-
-
-
-    #[nsx_v3]
-    # Deprecated option: tier0_router
-    # Replaced by [nsx_v3] top_tier_router
-
-    # Deprecated option: deny_subnets_redistribution
-    # Replaced by [nsx_v3] configure_t0_redistribution
+    process_oc_network = False
 
     [nsx_kube_proxy]
-
-    # The way to process service configuration, set into OVS flow or write to
-    # nestdb,
-    # Choices: ovs nestdb
-    #config_handler = ovs
-
-
-
 
     [nsx_node_agent]
 
     # Prefix of node /proc and /var/run/netns path to mount on nsx_node_agent
     # DaemonSet
     #proc_mount_path_prefix = /host
-
-
-
 
     # The log level of NSX RPC library
     # Choices: NOTSET DEBUG INFO WARNING ERROR CRITICAL
@@ -594,23 +501,12 @@ data:
     # config_retry_timeout.
     #config_reuse_backoff_time = 15
 
-
     # The OVS uplink OpenFlow port where to apply the NAT rules to.
     ovs_uplink_port = ens192
-
-    # Set this to True if you want to install and use the NSX-OVS kernel
-    # module. If the host OS is supported, it will be installed by nsx-ncp-
-    # bootstrap and used by nsx-ovs container in nsx-node-agent pod. Note that
-    # you would have to add (uncomment) the volumes and mounts in the nsx-ncp-
-    # bootstrap DS and add SYS_MODULE capability in nsx-ovs container spec in
-    # nsx-node-agent DS. Failing to do so will result in failure of
-    # installation and/or kernel upgrade of NSX-OVS kernelmodule.
-    #use_nsx_ovs_kernel_module = False
 
     # The time in seconds for nsx_node_agent to call OVS command. Please
     # increase the time if OVS is in heavy load to create/delete ports
     #ovs_operation_timeout = 5
-
 
     [operator]
 
