@@ -21,6 +21,10 @@ build:
 bin:
 	GOOS=linux $(GO) build -o $(BINDIR)/$(OPERATOR_NAME) $(GOFLAGS) -ldflags '$(LDFLAGS)' ./cmd/manager
 
+.PHONY: test-unit
+test-unit:
+	GOOS=linux $(GO) test -race -cover github.com/vmware/nsx-container-plugin-operator/pkg...
+
 .PHONY: clean
 clean:
 	rm -f $(BINDIR)/$(OPERATOR_NAME)
