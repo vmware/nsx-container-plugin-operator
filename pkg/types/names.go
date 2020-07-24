@@ -6,6 +6,7 @@ package types
 const (
 	OperatorNamespace           string = "nsx-system-operator"
 	ConfigMapName               string = "nsx-ncp-operator-config"
+	NcpInstallCRDName           string = "ncp-install"
 	NetworkCRDName              string = "cluster"
 	NsxNamespace                string = "nsx-system"
 	NcpConfigMapName            string = "nsx-ncp-config"

@@ -15,6 +15,8 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
+	operatorv1 "github.com/vmware/nsx-container-plugin-operator/pkg/apis/operator/v1"
+	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	"github.com/vmware/nsx-container-plugin-operator/version"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -116,6 +118,8 @@ func (status *StatusManager) set(reachedAvailableLevel bool, conditions ...confi
 			return err
 		}
 		log.Info(fmt.Sprintf("Updated ClusterOperator with conditions:\n%s", string(buf)))
+		// Set status to ncp-install CRD
+		status.setNcpInstallCrdStatus(&co.Status.Conditions)
 		return nil
 	})
 	if err != nil {
@@ -179,4 +183,23 @@ func (status *StatusManager) SetDeployments(deployments []types.NamespacedName) 
 	status.Lock()
 	defer status.Unlock()
 	status.deployments = deployments
+}
+
+func (status *StatusManager) setNcpInstallCrdStatus(conditions *[]configv1.ClusterOperatorStatusCondition) {
+	crd := &operatorv1.NcpInstall{}
+	err := status.client.Get(context.TODO(), types.NamespacedName{Name: operatortypes.NcpInstallCRDName,
+		Namespace: operatortypes.OperatorNamespace}, crd)
+	if err != nil {
+		log.Error(err, "Failed to get ncp-install CRD")
+		return
+	}
+	for _, condition := range *conditions {
+		v1helpers.SetStatusCondition(&crd.Status.Conditions, condition)
+	}
+	err = status.client.Status().Update(context.TODO(), crd)
+	if err != nil {
+		log.Error(err, "Failed to update ncp-install CRD status")
+	} else {
+		log.Info("Updated ncp-install CRD status")
+	}
 }

@@ -64,30 +64,38 @@ func NewFakeReconcileConfigMap() *ReconcileConfigMap {
 	}
 }
 
-func TestConfigMapController_isNcpImageChanged(t *testing.T) {
+func TestConfigMapController_isNcpDeploymentChanged(t *testing.T) {
 	r := NewFakeReconcileConfigMap()
 	// NCP deployment not found case
-	imageChanged, _ := r.isNcpImageChanged()
-	assert.Equal(t, true, imageChanged)
+	ncpChanged, _ := r.isNcpDeploymentChanged(1)
+	assert.Equal(t, true, ncpChanged)
 
 	container := corev1.Container{Image: "fakeImage"}
+	var replicas int32 = 1
 	ncpDeployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "nsx-ncp",
 			Namespace: "nsx-system",
 		},
-		Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{
-			Spec: corev1.PodSpec{Containers: []corev1.Container{container}}}},
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{Containers: []corev1.Container{container}}},
+			Replicas: &replicas,
+		},
 	}
 	r.client.Create(context.TODO(), ncpDeployment)
 
 	// Image no change case
 	os.Setenv("NCP_IMAGE", "fakeImage")
-	imageChanged, _ = r.isNcpImageChanged()
-	assert.Equal(t, false, imageChanged)
+	ncpChanged, _ = r.isNcpDeploymentChanged(1)
+	assert.Equal(t, false, ncpChanged)
+
+	// Replicas change case
+	ncpChanged, _ = r.isNcpDeploymentChanged(3)
+	assert.Equal(t, true, ncpChanged)
 
 	//Image change case
 	os.Setenv("NCP_IMAGE", "fakeNewImage")
-	imageChanged, _ = r.isNcpImageChanged()
-	assert.Equal(t, true, imageChanged)
+	ncpChanged, _ = r.isNcpDeploymentChanged(1)
+	assert.Equal(t, true, ncpChanged)
 }

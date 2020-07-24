@@ -173,7 +173,7 @@ func TestValidateClusterNetwork(t *testing.T) {
 
 func TestRender(t *testing.T) {
 	mockConfigMap := createMockConfigMap()
-	objs, err := Render(mockConfigMap)
+	objs, err := Render(mockConfigMap, 1)
 	assert.Empty(t, objs)
 	assert.Error(t, err, "failed to render manifests")
 }
@@ -222,14 +222,14 @@ func TestInSlice(t *testing.T) {
 
 func TestStringSliceEqual(t *testing.T) {
 	slice1 := []string{"a", "b"}
-    slice2 := []string{"b", "a"}
-    assert.True(t, stringSliceEqual(slice1, slice2))
-    slice1 = []string{"b", "c"}
-    assert.False(t, stringSliceEqual(slice1, slice2))
-    slice1 = []string{"x", "y"}
-    assert.False(t, stringSliceEqual(slice1, slice2))
-    slice2 = []string{"x", "y"}
-    assert.True(t, stringSliceEqual(slice1, slice2))
+	slice2 := []string{"b", "a"}
+	assert.True(t, stringSliceEqual(slice1, slice2))
+	slice1 = []string{"b", "c"}
+	assert.False(t, stringSliceEqual(slice1, slice2))
+	slice1 = []string{"x", "y"}
+	assert.False(t, stringSliceEqual(slice1, slice2))
+	slice2 = []string{"x", "y"}
+	assert.True(t, stringSliceEqual(slice1, slice2))
 }
 
 func TestGenerateConfigMap(t *testing.T) {
