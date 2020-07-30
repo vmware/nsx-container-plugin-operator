@@ -21,6 +21,9 @@ rules:
 - apiGroups: [rbac.authorization.k8s.io]
   resources: [clusterroles, clusterrolebindings]
   verbs: [create, get, list, patch, update, watch, delete]
+- apiGroups: [operator.nsx.vmware.com]
+  resources: [ncpinstalls, ncpinstalls/status]
+  verbs: [get, list, watch, patch, update]
 # Required by nsx-node-agent
 - apiGroups: ['']
   resources: [endpoints, services]

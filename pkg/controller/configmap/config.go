@@ -172,7 +172,7 @@ func validateClusterNetwork(spec *configv1.NetworkSpec) []error {
 	return errs
 }
 
-func Render(configmap *corev1.ConfigMap) ([]*unstructured.Unstructured, error) {
+func Render(configmap *corev1.ConfigMap, ncpReplicas int32) ([]*unstructured.Unstructured, error) {
 	log.Info("Starting render phase")
 	objs := []*unstructured.Unstructured{}
 
@@ -208,9 +208,13 @@ func Render(configmap *corev1.ConfigMap) ([]*unstructured.Unstructured, error) {
 		}
 	}
 	if haEnabled {
-		renderData.Data[operatortypes.NcpReplicasKey] = operatortypes.NcpHaReplicas
+		renderData.Data[operatortypes.NcpReplicasKey] = ncpReplicas
 	} else {
 		renderData.Data[operatortypes.NcpReplicasKey] = 1
+		if ncpReplicas != 1 {
+			log.Info(fmt.Sprintf("Set nsx-ncp deployment replicas to 1 instead of %d as HA is disabled",
+				ncpReplicas))
+		}
 	}
 
 	// Set LB secret
@@ -247,20 +251,20 @@ func Render(configmap *corev1.ConfigMap) ([]*unstructured.Unstructured, error) {
 }
 
 func HasNetworkConfigChange(currConfig *configv1.Network, prevConfig *configv1.Network) bool {
-    // only detect changes in spec.ClusterNetwork and spec.ServiceNetwork
-    if !stringSliceEqual(currConfig.Spec.ServiceNetwork, prevConfig.Spec.ServiceNetwork) {
-        // no point to check CIDRs as well
-        return true
-    }
-    currCidrs := []string{}
-    for _, cnet := range currConfig.Spec.ClusterNetwork {
+	// only detect changes in spec.ClusterNetwork and spec.ServiceNetwork
+	if !stringSliceEqual(currConfig.Spec.ServiceNetwork, prevConfig.Spec.ServiceNetwork) {
+		// no point to check CIDRs as well
+		return true
+	}
+	currCidrs := []string{}
+	for _, cnet := range currConfig.Spec.ClusterNetwork {
 		currCidrs = append(currCidrs, cnet.CIDR)
 	}
-    prevCidrs := []string{}
-    for _, cnet := range prevConfig.Spec.ClusterNetwork {
+	prevCidrs := []string{}
+	for _, cnet := range prevConfig.Spec.ClusterNetwork {
 		prevCidrs = append(prevCidrs, cnet.CIDR)
 	}
-    return stringSliceEqual(currCidrs, prevCidrs)
+	return stringSliceEqual(currCidrs, prevCidrs)
 }
 
 func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap) (ncpNeedChange bool, agentNeedChange bool, err error) {
@@ -340,15 +344,15 @@ func inSlice(str string, s []string) bool {
 }
 
 func stringSliceEqual(a, b []string) bool {
-    if len(a) != len(b) {
-        return false
-    }
-    for _, v := range a {
-        if !inSlice(v, b) {
-            return false
-        }
-    }
-    return true
+	if len(a) != len(b) {
+		return false
+	}
+	for _, v := range a {
+		if !inSlice(v, b) {
+			return false
+		}
+	}
+	return true
 }
 
 func generateConfigMap(srcCfg *ini.File, sections []string) (string, error) {

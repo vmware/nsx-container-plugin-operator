@@ -12,6 +12,7 @@ import (
 	"github.com/openshift/cluster-network-operator/pkg/apply"
 	k8sutil "github.com/openshift/cluster-network-operator/pkg/util/k8s"
 	"github.com/pkg/errors"
+	operatorv1 "github.com/vmware/nsx-container-plugin-operator/pkg/apis/operator/v1"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
@@ -61,6 +62,12 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
+	// Watch for changes to primary resource NcpInstall CRD
+	err = c.Watch(&source.Kind{Type: &operatorv1.NcpInstall{}}, &handler.EnqueueRequestForObject{})
+	if err != nil {
+		return err
+	}
+
 	// Watch for changes to primary resource ConfigMap
 	err = c.Watch(&source.Kind{Type: &corev1.ConfigMap{}}, &handler.EnqueueRequestForObject{})
 	if err != nil {
@@ -101,8 +108,33 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		reqLogger.Info("Reconciling nsx-ncp-operator ConfigMap change")
 	} else if request.Namespace == "" && request.Name == operatortypes.NetworkCRDName {
 		reqLogger.Info("Reconciling cluster Network CRD change")
+	} else if request.Namespace == operatortypes.OperatorNamespace && request.Name == operatortypes.NcpInstallCRDName {
+		reqLogger.Info("Reconciling ncp-install CRD change")
 	} else {
 		return reconcile.Result{}, nil
+	}
+
+	// Fetch ncp-install CRD instance
+	ncpInstallCrd := &operatorv1.NcpInstall{}
+	err := r.client.Get(context.TODO(), types.NamespacedName{Name: operatortypes.NcpInstallCRDName,
+		Namespace: operatortypes.OperatorNamespace}, ncpInstallCrd)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info(fmt.Sprintf("%s CRD is not found", operatortypes.NcpInstallCRDName))
+			r.status.SetDegraded(statusmanager.OperatorConfig, "NoNcpInstallCRD",
+				fmt.Sprintf("%s CRD is not found", operatortypes.NcpInstallCRDName))
+			return reconcile.Result{}, nil
+		}
+		// Error reading the object - requeue the request.
+		r.status.SetDegraded(statusmanager.OperatorConfig, "InvalidNcpInstallCRD",
+			fmt.Sprintf("Failed to get operator CRD: %v", err))
+		return reconcile.Result{Requeue: true}, err
+	}
+	ncpReplicas := ncpInstallCrd.Spec.NcpReplicas
+	if ncpReplicas == 0 {
+		log.Info(fmt.Sprintf("Set NcpReplicas to %d as it is not set in ncp-install CRD",
+			operatortypes.NcpDefaultReplicas))
+		ncpReplicas = int32(operatortypes.NcpDefaultReplicas)
 	}
 
 	// Fetch the ConfigMap instance
@@ -111,7 +143,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		Namespace: operatortypes.OperatorNamespace,
 		Name:      operatortypes.ConfigMapName,
 	}
-	err := r.client.Get(context.TODO(), instanceName, instance)
+	err = r.client.Get(context.TODO(), instanceName, instance)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -123,9 +155,9 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			return reconcile.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
-		r.status.SetDegraded(statusmanager.OperatorConfig, "NoOperatorConfig",
+		r.status.SetDegraded(statusmanager.OperatorConfig, "InvalidOperatorConfig",
 			fmt.Sprintf("Failed to get operator ConfigMap: %v", err))
-		return reconcile.Result{}, err
+		return reconcile.Result{Requeue: true}, err
 	}
 
 	// Get network CRD configuration
@@ -140,9 +172,9 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			r.status.SetDegraded(statusmanager.ClusterConfig, "NoClusterConfig", "Cluster network CRD is not found")
 			return reconcile.Result{}, nil
 		}
-		r.status.SetDegraded(statusmanager.ClusterConfig, "NoClusterConfig",
+		r.status.SetDegraded(statusmanager.ClusterConfig, "InvalidClusterConfig",
 			fmt.Sprintf("Failed to get cluster network CRD: %v", err))
-		return reconcile.Result{}, err
+		return reconcile.Result{Requeue: true}, err
 	}
 
 	// Fill default configurations
@@ -160,7 +192,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Render configurations
-	objs, err := Render(instance)
+	objs, err := Render(instance, ncpReplicas)
 	if err != nil {
 		log.Error(err, "Failed to render configurations")
 		r.status.SetDegraded(statusmanager.OperatorConfig, "RenderConfigError",
@@ -221,13 +253,13 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, err
 	}
 	if !ncpNeedChange && !agentNeedChange {
-		// Check if NCP_IMAGE changes
-		ncpImageChanged, err := r.isNcpImageChanged()
+		// Check if NCP_IMAGE or nsx-ncp replicas changed
+		ncpChanged, err := r.isNcpDeploymentChanged(ncpReplicas)
 		if err != nil {
 			return reconcile.Result{Requeue: true}, err
 		}
 
-		if !ncpImageChanged {
+		if !ncpChanged {
 			log.Info("no new configuration needs to apply")
 			// Check if network config status must be updated
 			if networkConfigChanged {
@@ -242,7 +274,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			r.status.SetNotDegraded(statusmanager.OperatorConfig)
 			return reconcile.Result{}, nil
 		} else {
-			log.Info("NCP image changed")
+			log.Info("nsx-ncp deployment changed")
 		}
 	}
 
@@ -370,7 +402,7 @@ func (r *ReconcileConfigMap) updateSharedInfoWithNsxNcpResources(objs []*unstruc
 	log.Info("Updated shared info with Nsx Ncp Resources")
 }
 
-func (r *ReconcileConfigMap) isNcpImageChanged() (bool, error) {
+func (r *ReconcileConfigMap) isNcpDeploymentChanged(ncpReplicas int32) (bool, error) {
 	ncpDeployment := &appsv1.Deployment{}
 	err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.NsxNcpDeploymentName},
 		ncpDeployment)
@@ -382,7 +414,7 @@ func (r *ReconcileConfigMap) isNcpImageChanged() (bool, error) {
 	}
 	prevImage := ncpDeployment.Spec.Template.Spec.Containers[0].Image
 	currImage := os.Getenv(operatortypes.NcpImageEnv)
-	if prevImage != currImage {
+	if prevImage != currImage || ncpReplicas != *ncpDeployment.Spec.Replicas {
 		return true, nil
 	}
 	return false, nil

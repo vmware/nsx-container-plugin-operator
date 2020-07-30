@@ -4,7 +4,7 @@
 package types
 
 const (
-	NcpHaReplicas int = 3
+	NcpDefaultReplicas int = 1
 )
 
 var NcpSections = []string{"DEFAULT", "ha", "k8s", "coe", "nsx_v3", "vc"}
