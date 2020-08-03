@@ -26,6 +26,7 @@ const (
 	NsxCertRenderKey            string = "NsxCert"
 	NsxKeyRenderKey             string = "NsxKey"
 	NsxCARenderKey              string = "NsxCA"
+	NsxSecret                   string = "nsx-secret"
 	NsxCertTempPath             string = "/tmp/nsx.cert"
 	NsxKeyTempPath              string = "/tmp/nsx.key"
 	NsxCATempPath               string = "/tmp/nsx.ca"
