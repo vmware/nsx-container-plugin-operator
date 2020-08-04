@@ -372,8 +372,14 @@ func generateConfigMap(srcCfg *ini.File, sections []string) (string, error) {
 	return iniWriteToString(destCfg)
 }
 
+func FillKeyIfPresent(opCfg *ini.File, sec string, key string, data []byte) {
+	if len(data) > 0 {
+		opCfg.Section(sec).NewKey(key, b64.StdEncoding.EncodeToString(data))
+	}
+}
+
 func GenerateOperatorConfigMap(opConfigmap *corev1.ConfigMap, ncpConfigMap *corev1.ConfigMap,
-	agentConfigMap *corev1.ConfigMap, lbSecret *corev1.Secret) error {
+	agentConfigMap *corev1.ConfigMap, lbSecret *corev1.Secret, nsxSecret *corev1.Secret) error {
 	ncpCfg, err := ini.Load([]byte(ncpConfigMap.Data[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		log.Error(err, "Failed to load nsx-ncp ConfigMap")
@@ -400,10 +406,15 @@ func GenerateOperatorConfigMap(opConfigmap *corev1.ConfigMap, ncpConfigMap *core
 			opCfg.Section(name).NewKey(key, sec.Key(key).Value())
 		}
 	}
+	opCfg.NewSection("operator")
 	if lbSecret != nil {
-		opCfg.NewSection("operator")
-		opCfg.Section("operator").NewKey("lb_default_cert", b64.StdEncoding.EncodeToString(lbSecret.Data["tls.crt"]))
-		opCfg.Section("operator").NewKey("lb_priv_key", b64.StdEncoding.EncodeToString(lbSecret.Data["tls.key"]))
+		FillKeyIfPresent(opCfg, "operator", "lb_default_cert", lbSecret.Data["tls.crt"])
+		FillKeyIfPresent(opCfg, "operator", "lb_priv_key", lbSecret.Data["tls.key"])
+	}
+	if nsxSecret != nil {
+		FillKeyIfPresent(opCfg, "operator", "nsx_api_cert", nsxSecret.Data["tls.crt"])
+		FillKeyIfPresent(opCfg, "operator", "nsx_api_private_key", nsxSecret.Data["tls.key"])
+		FillKeyIfPresent(opCfg, "operator", "nsx_ca", nsxSecret.Data["tls.ca"])
 	}
 
 	opConfigmap.Data[operatortypes.ConfigMapDataKey], err = iniWriteToString(opCfg)
