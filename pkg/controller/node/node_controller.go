@@ -185,7 +185,7 @@ func filterSegmentPorts(nsxClients *NsxClients, ports []*data.StructValue, nodeN
 			return -1, err
 		}
 		if len(logicalPort.RealizedBindings) == 0 {
-			return -1, errors.Errorf("Segment port %s doesn't have realized bindings", portPolicyId)
+			continue
 		}
 		address := logicalPort.RealizedBindings[0].Binding.IpAddress
 		if address == nodeAddress {
