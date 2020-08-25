@@ -275,8 +275,8 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 				if err != nil {
 					r.status.SetDegraded(statusmanager.ClusterConfig, "UpdateNetworkStatusError",
 						fmt.Sprintf("Failed to update network status: %v", err))
+						return reconcile.Result{}, err
 				}
-				return reconcile.Result{}, err
 			}
 			r.status.SetNotDegraded(statusmanager.ClusterConfig)
 			r.status.SetNotDegraded(statusmanager.OperatorConfig)
