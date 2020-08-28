@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-network-operator/pkg/apply"
@@ -79,6 +80,12 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
+	// Watch for changes to primary resource Secret
+	err = c.Watch(&source.Kind{Type: &corev1.Secret{}}, &handler.EnqueueRequestForObject{})
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -104,12 +111,21 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
 	// Check request namespace and name to ignore other changes
-	if request.Namespace == operatortypes.OperatorNamespace && request.Name == operatortypes.ConfigMapName {
-		reqLogger.Info("Reconciling nsx-ncp-operator ConfigMap change")
+	if request.Namespace == operatortypes.OperatorNamespace {
+		if request.Name == operatortypes.ConfigMapName {
+			reqLogger.Info("Reconciling nsx-ncp-operator ConfigMap change")
+		} else if request.Name == operatortypes.NcpInstallCRDName {
+			reqLogger.Info("Reconciling ncp-install CRD change")
+		} else if request.Name == operatortypes.NsxSecret {
+			reqLogger.Info("Reconciling nsx-secret change")
+		} else if request.Name == operatortypes.LbSecret {
+			reqLogger.Info("Reconciling lb-secret change")
+		} else {
+			reqLogger.Info("Received unsupported change")
+			return reconcile.Result{}, nil
+		}
 	} else if request.Namespace == "" && request.Name == operatortypes.NetworkCRDName {
 		reqLogger.Info("Reconciling cluster Network CRD change")
-	} else if request.Namespace == operatortypes.OperatorNamespace && request.Name == operatortypes.NcpInstallCRDName {
-		reqLogger.Info("Reconciling ncp-install CRD change")
 	} else {
 		return reconcile.Result{}, nil
 	}
@@ -191,8 +207,28 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, err
 	}
 
+	// Get nsx-secret and lb-secret
+	var opNsxSecret *corev1.Secret
+	if optionInConfigMap(instance, "nsx_v3", "nsx_api_cert_file") {
+		opNsxSecret = &corev1.Secret{}
+		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.OperatorNamespace, Name: operatortypes.NsxSecret}, opNsxSecret)
+		if err != nil {
+			log.Error(err, "Failed to get operator nsx-secret")
+			return reconcile.Result{}, err
+		}
+	}
+	var opLbSecret *corev1.Secret
+	if optionInConfigMap(instance, "nsx_v3", "lb_default_cert_path") {
+		opLbSecret = &corev1.Secret{}
+		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.OperatorNamespace, Name: operatortypes.LbSecret}, opLbSecret)
+		if err != nil {
+			log.Error(err, "Failed to get operator lb-secret")
+			return reconcile.Result{}, err
+		}
+	}
+
 	// Render configurations
-	objs, err := Render(instance, ncpReplicas)
+	objs, err := Render(instance, ncpReplicas, opNsxSecret, opLbSecret)
 	if err != nil {
 		log.Error(err, "Failed to render configurations")
 		r.status.SetDegraded(statusmanager.OperatorConfig, "RenderConfigError",
@@ -223,26 +259,10 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			}
 			agentConfigMap = nil
 		}
-		lbSecret := &corev1.Secret{}
-		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.LbSecret}, lbSecret)
-		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				log.Error(err, "Failed to get lb-secret")
-			}
-			lbSecret = nil
-		}
-		nsxSecret := &corev1.Secret{}
-		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.NsxSecret}, nsxSecret)
-		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				log.Error(err, "Failed to get nsx-secret")
-			}
-			nsxSecret = nil
-		}
 		if ncpConfigMap != nil && agentConfigMap != nil {
 			appliedConfigMap = &corev1.ConfigMap{}
 			appliedConfigMap.Data = make(map[string]string)
-			err = GenerateOperatorConfigMap(appliedConfigMap, ncpConfigMap, agentConfigMap, lbSecret, nsxSecret)
+			err = GenerateOperatorConfigMap(appliedConfigMap, ncpConfigMap, agentConfigMap)
 			if err != nil {
 				r.status.SetDegraded(statusmanager.OperatorConfig, "InternalError",
 					fmt.Sprintf("Failed to generate operator ConfigMap: %v", err))
@@ -260,6 +280,14 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	if err != nil {
 		return reconcile.Result{}, err
 	}
+	if !ncpNeedChange {
+		// Compare nsx-secret and lb-secret
+		ncpNeedChange, err = r.isSecretChanged(opNsxSecret, opLbSecret)
+		if err != nil {
+			return reconcile.Result{Requeue: true}, err
+		}
+	}
+
 	if !ncpNeedChange && !agentNeedChange {
 		// Check if NCP_IMAGE or nsx-ncp replicas changed
 		ncpChanged, err := r.isNcpDeploymentChanged(ncpReplicas)
@@ -426,4 +454,54 @@ func (r *ReconcileConfigMap) isNcpDeploymentChanged(ncpReplicas int32) (bool, er
 		return true, nil
 	}
 	return false, nil
+}
+
+func (r *ReconcileConfigMap) isSecretChanged(opNsxSecret *corev1.Secret, opLbSecret *corev1.Secret) (bool, error) {
+	ncpNsxSecret := &corev1.Secret{}
+	err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.NsxSecret}, ncpNsxSecret)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			log.Error(err, "Failed to get NCP nsx-secret")
+			return true, err
+		}
+		ncpNsxSecret = nil
+	}
+	nsxSecretChanged := secretEqual(opNsxSecret, ncpNsxSecret)
+	if nsxSecretChanged {
+		log.Info("nsx-secret is changed")
+		return true, nil
+	}
+
+	ncpLbSecret := &corev1.Secret{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.LbSecret}, ncpLbSecret)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			log.Error(err, "Failed to get NCP lb-secret")
+			return true, err
+		}
+		ncpLbSecret = nil
+	}
+	lbSecretChanged := secretEqual(opLbSecret, ncpLbSecret)
+	if lbSecretChanged {
+		log.Info("lb-secret is changed")
+		return true, nil
+	}
+	return false, nil
+}
+
+func secretEqual(s1 *corev1.Secret, s2 *corev1.Secret) bool {
+	if s1 != nil && s2 != nil {
+		if !reflect.DeepEqual(s1.Data, s2.Data) {
+			return true
+		}
+	} else if s1 == nil && s2 != nil {
+		if !reflect.DeepEqual(s2.Data["tls.crt"], []byte{}) || !reflect.DeepEqual(s2.Data["tls.key"], []byte{}) {
+			return true
+		}
+	} else if s1 != nil && s2 == nil {
+		if !reflect.DeepEqual(s1.Data["tls.crt"], []byte{}) || !reflect.DeepEqual(s1.Data["tls.key"], []byte{}) {
+			return true
+		}
+	}
+	return false
 }

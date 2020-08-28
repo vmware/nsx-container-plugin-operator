@@ -5,7 +5,7 @@ package configmap
 
 import (
 	"bytes"
-	b64 "encoding/base64"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"os"
@@ -172,7 +172,8 @@ func validateClusterNetwork(spec *configv1.NetworkSpec) []error {
 	return errs
 }
 
-func Render(configmap *corev1.ConfigMap, ncpReplicas int32) ([]*unstructured.Unstructured, error) {
+func Render(configmap *corev1.ConfigMap, ncpReplicas int32, nsxSecret *corev1.Secret,
+	lbSecret *corev1.Secret) ([]*unstructured.Unstructured, error) {
 	log.Info("Starting render phase")
 	objs := []*unstructured.Unstructured{}
 
@@ -218,28 +219,23 @@ func Render(configmap *corev1.ConfigMap, ncpReplicas int32) ([]*unstructured.Uns
 	}
 
 	// Set LB secret
-	lbCert := ""
-	lbKey := ""
-	sec, err := cfg.GetSection("operator")
-	if err == nil && sec.HasKey("lb_default_cert") && sec.HasKey("lb_priv_key") {
-		lbCert = sec.Key("lb_default_cert").Value()
-		lbKey = sec.Key("lb_priv_key").Value()
+	if lbSecret != nil {
+		renderData.Data[operatortypes.LbCertRenderKey] = base64.StdEncoding.EncodeToString(lbSecret.Data["tls.crt"])
+		renderData.Data[operatortypes.LbKeyRenderKey] = base64.StdEncoding.EncodeToString(lbSecret.Data["tls.key"])
+	} else {
+		renderData.Data[operatortypes.LbCertRenderKey] = ""
+		renderData.Data[operatortypes.LbKeyRenderKey] = ""
 	}
-	renderData.Data[operatortypes.LbCertRenderKey] = lbCert
-	renderData.Data[operatortypes.LbKeyRenderKey] = lbKey
-
 	// Set NSX secret
-	nsxCert := ""
-	nsxKey := ""
-	nsxCA := ""
-	if err == nil && sec.HasKey("nsx_api_cert") && sec.HasKey("nsx_api_private_key") {
-		nsxCert = sec.Key("nsx_api_cert").Value()
-		nsxKey = sec.Key("nsx_api_private_key").Value()
-		nsxCA = sec.Key("nsx_ca").Value()
+	if nsxSecret != nil {
+		renderData.Data[operatortypes.NsxCertRenderKey] = base64.StdEncoding.EncodeToString(nsxSecret.Data["tls.crt"])
+		renderData.Data[operatortypes.NsxKeyRenderKey] = base64.StdEncoding.EncodeToString(nsxSecret.Data["tls.key"])
+		renderData.Data[operatortypes.NsxCARenderKey] = base64.StdEncoding.EncodeToString(nsxSecret.Data["tls.ca"])
+	} else {
+		renderData.Data[operatortypes.NsxCertRenderKey] = ""
+		renderData.Data[operatortypes.NsxKeyRenderKey] = ""
+		renderData.Data[operatortypes.NsxCARenderKey] = ""
 	}
-	renderData.Data[operatortypes.NsxCertRenderKey] = nsxCert
-	renderData.Data[operatortypes.NsxKeyRenderKey] = nsxKey
-	renderData.Data[operatortypes.NsxCARenderKey] = nsxCA
 
 	manifests, err := render.RenderDir(manifestDir, &renderData)
 	if err != nil {
@@ -314,9 +310,6 @@ func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap)
 	// Check whether different sections impact on NCP and nsx-node-agent
 	ncpNeedChange, agentNeedChange = false, false
 	for _, sec := range diffSecs {
-		if !ncpNeedChange && sec == "operator" {
-			ncpNeedChange = true
-		}
 		if !ncpNeedChange && inSlice(sec, operatortypes.NcpSections) {
 			ncpNeedChange = true
 		}
@@ -372,14 +365,8 @@ func generateConfigMap(srcCfg *ini.File, sections []string) (string, error) {
 	return iniWriteToString(destCfg)
 }
 
-func FillKeyIfPresent(opCfg *ini.File, sec string, key string, data []byte) {
-	if len(data) > 0 {
-		opCfg.Section(sec).NewKey(key, b64.StdEncoding.EncodeToString(data))
-	}
-}
-
 func GenerateOperatorConfigMap(opConfigmap *corev1.ConfigMap, ncpConfigMap *corev1.ConfigMap,
-	agentConfigMap *corev1.ConfigMap, lbSecret *corev1.Secret, nsxSecret *corev1.Secret) error {
+	agentConfigMap *corev1.ConfigMap) error {
 	ncpCfg, err := ini.Load([]byte(ncpConfigMap.Data[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		log.Error(err, "Failed to load nsx-ncp ConfigMap")
@@ -406,16 +393,6 @@ func GenerateOperatorConfigMap(opConfigmap *corev1.ConfigMap, ncpConfigMap *core
 			opCfg.Section(name).NewKey(key, sec.Key(key).Value())
 		}
 	}
-	opCfg.NewSection("operator")
-	if lbSecret != nil {
-		FillKeyIfPresent(opCfg, "operator", "lb_default_cert", lbSecret.Data["tls.crt"])
-		FillKeyIfPresent(opCfg, "operator", "lb_priv_key", lbSecret.Data["tls.key"])
-	}
-	if nsxSecret != nil {
-		FillKeyIfPresent(opCfg, "operator", "nsx_api_cert", nsxSecret.Data["tls.crt"])
-		FillKeyIfPresent(opCfg, "operator", "nsx_api_private_key", nsxSecret.Data["tls.key"])
-		FillKeyIfPresent(opCfg, "operator", "nsx_ca", nsxSecret.Data["tls.ca"])
-	}
 
 	opConfigmap.Data[operatortypes.ConfigMapDataKey], err = iniWriteToString(opCfg)
 	if err != nil {
@@ -434,4 +411,20 @@ func iniWriteToString(cfg *ini.File) (string, error) {
 	// go-ini does not write DEFAULT section name to buffer, so add it here
 	cfgString := "\n[DEFAULT]\n" + buf.String()
 	return cfgString, nil
+}
+
+func optionInConfigMap(configMap *corev1.ConfigMap, section string, key string) bool {
+	cfg, err := ini.Load([]byte(configMap.Data[operatortypes.ConfigMapDataKey]))
+	if err != nil {
+		log.Error(err, "Failed to load ConfigMap")
+		return false
+	}
+	sec, err := cfg.GetSection(section)
+	if err != nil {
+		return false
+	}
+	if sec.HasKey(key) && sec.Key(key).Value() != "" {
+		return true
+	}
+	return false
 }

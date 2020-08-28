@@ -5,7 +5,6 @@ package configmap
 
 import (
 	"bytes"
-	"encoding/base64"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -173,7 +172,10 @@ func TestValidateClusterNetwork(t *testing.T) {
 
 func TestRender(t *testing.T) {
 	mockConfigMap := createMockConfigMap()
-	objs, err := Render(mockConfigMap, 1)
+	var nsxSecret *corev1.Secret
+	var lbSecret *corev1.Secret
+
+	objs, err := Render(mockConfigMap, 1, nsxSecret, lbSecret)
 	assert.Empty(t, objs)
 	assert.Error(t, err, "failed to render manifests")
 }
@@ -262,32 +264,12 @@ func TestGenerateOperatorConfigMap(t *testing.T) {
 	cfg.DeleteSection("nsx_v3")
 	cfg.Section("nsx_node_agent").NewKey("ovs_uplink_port", "eth1")
 	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
-	lbSecret := &corev1.Secret{}
-	lbSecret.Data = make(map[string][]byte)
-	lbSecret.Data["tls.crt"] = []byte("mockCrt")
-	lbSecret.Data["tls.key"] = []byte("mockKey")
-	nsxSecret := &corev1.Secret{}
-	nsxSecret.Data = make(map[string][]byte)
-	nsxSecret.Data["tls.crt"] = []byte("mockCrt")
-	nsxSecret.Data["tls.key"] = []byte("mockKey")
-	nsxSecret.Data["tls.ca"] = []byte("mockCA")
 
-
-	GenerateOperatorConfigMap(opConfigMap, ncpConfigMap, agentConfigMap, lbSecret, nsxSecret)
+	GenerateOperatorConfigMap(opConfigMap, ncpConfigMap, agentConfigMap)
 	data = &opConfigMap.Data
 	cfg, _ = ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 	assert.Equal(t, "mockIP", cfg.Section("nsx_v3").Key("nsx_api_managers").Value())
 	assert.Equal(t, "eth1", cfg.Section("nsx_node_agent").Key("ovs_uplink_port").Value())
-	assert.Equal(t, base64.StdEncoding.EncodeToString([]byte("mockCrt")),
-		cfg.Section("operator").Key("lb_default_cert").Value())
-	assert.Equal(t, base64.StdEncoding.EncodeToString([]byte("mockKey")),
-		cfg.Section("operator").Key("lb_priv_key").Value())
-	assert.Equal(t, base64.StdEncoding.EncodeToString([]byte("mockCrt")),
-		cfg.Section("operator").Key("nsx_api_cert").Value())
-	assert.Equal(t, base64.StdEncoding.EncodeToString([]byte("mockKey")),
-		cfg.Section("operator").Key("nsx_api_private_key").Value())
-	assert.Equal(t, base64.StdEncoding.EncodeToString([]byte("mockCA")),
-		cfg.Section("operator").Key("nsx_ca").Value())
 }
 
 func TestIniWriteToString(t *testing.T) {
@@ -297,4 +279,17 @@ func TestIniWriteToString(t *testing.T) {
 	expStr := "\n[DEFAULT]\n" + buf.String()
 	retStr, _ := iniWriteToString(cfg)
 	assert.Equal(t, expStr, retStr)
+}
+
+func TestOptionInConfigMap(t *testing.T) {
+	mockConfigMap := createMockConfigMap()
+	data := &mockConfigMap.Data
+	cfg, _ := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+	cfg.Section("nsx_v3").NewKey("nsx_api_cert_file", "mock_cert")
+	cfg.Section("nsx_v3").NewKey("mock_key", "")
+	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+
+	assert.True(t, optionInConfigMap(mockConfigMap, "nsx_v3", "nsx_api_cert_file"))
+	assert.False(t, optionInConfigMap(mockConfigMap, "nsx_v3", "lb_default_cert_path"))
+	assert.False(t, optionInConfigMap(mockConfigMap, "nsx_v3", "mock_key"))
 }

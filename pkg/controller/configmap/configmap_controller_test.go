@@ -99,3 +99,49 @@ func TestConfigMapController_isNcpDeploymentChanged(t *testing.T) {
 	ncpChanged, _ = r.isNcpDeploymentChanged(1)
 	assert.Equal(t, true, ncpChanged)
 }
+
+func TestConfigMapController_isSecretChanged(t *testing.T) {
+	r := NewFakeReconcileConfigMap()
+	mockValue := []byte("mockCrt")
+	nsxSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nsx-secret",
+			Namespace: "nsx-system",
+		},
+		Data: map[string][]byte{
+			"tls.crt": mockValue, "tls.key": mockValue, "tls.ca": mockValue,
+		},
+	}
+	lbSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "lb-secret",
+			Namespace: "nsx-system",
+		},
+		Data: map[string][]byte{
+			"tls.crt": mockValue, "tls.key": mockValue,
+		},
+	}
+	r.client.Create(context.TODO(), nsxSecret)
+	r.client.Create(context.TODO(), lbSecret)
+
+	// Secret nil case
+	secretChanged, _ := r.isSecretChanged(nil, nil)
+	assert.True(t, secretChanged)
+	secretChanged, _ = r.isSecretChanged(nil, lbSecret)
+	assert.True(t, secretChanged)
+	secretChanged, _ = r.isSecretChanged(nsxSecret, nil)
+	assert.True(t, secretChanged)
+
+	// Secret equal case
+	secretChanged, _ = r.isSecretChanged(nsxSecret, lbSecret)
+	assert.False(t, secretChanged)
+
+	// Secret not equal case
+	mockSecret := &corev1.Secret{
+		Data: map[string][]byte{"tls.crt": mockValue, "tls.key": []byte("key")},
+	}
+	secretChanged, _ = r.isSecretChanged(nsxSecret, mockSecret)
+	assert.True(t, secretChanged)
+	secretChanged, _ = r.isSecretChanged(mockSecret, lbSecret)
+	assert.True(t, secretChanged)
+}
