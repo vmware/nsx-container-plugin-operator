@@ -43,8 +43,9 @@ func FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "coe", "enable_snat", "True", false))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "ha", "enable", "True", false))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "k8s", "process_oc_network", "False", true))
-    // For Openshift add a 3-seconds agent delay by default
+	// For Openshift add a 3-seconds agent delay by default
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_node_agent", "waiting_before_cni_response", "3", false))
+	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_node_agent", "mtu", strconv.Itoa(operatortypes.DefaultMTU), false))
 	appendErrorIfNotNil(&errs, fillClusterNetwork(spec, cfg))
 
 	// Write config back to ConfigMap data
@@ -128,6 +129,12 @@ func validateConfigMap(configmap *corev1.ConfigMap) []error {
 	if validateConfig(cfg, "nsx_v3", "tier0_gateway") != nil &&
 		validateConfig(cfg, "nsx_v3", "top_tier_router") != nil {
 		appendErrorIfNotNil(&errs, errors.Errorf("failed to get tier0_gateway or top_tier_router"))
+	}
+	// Check MTU value
+	mtu := cfg.Section("nsx_node_agent").Key("mtu").Value()
+	_, err = strconv.Atoi(mtu)
+	if err != nil {
+		appendErrorIfNotNil(&errs, errors.Wrapf(err, "mtu is invalid"))
 	}
 
 	return errs
@@ -266,26 +273,34 @@ func HasNetworkConfigChange(currConfig *configv1.Network, prevConfig *configv1.N
 	return stringSliceEqual(currCidrs, prevCidrs)
 }
 
-func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap) (ncpNeedChange bool, agentNeedChange bool, err error) {
+type podNeedChange struct {
+	ncp       bool
+	agent     bool
+	bootstrap bool
+}
+
+func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap) (
+	podNeedChange, error) {
 	if prevConfig == nil {
-		return true, true, nil
+		return podNeedChange{true, true, true}, nil
 	}
 	currData := currConfig.Data
 	prevData := prevConfig.Data
 	// Compare the whole data
-	if strings.Compare(strings.TrimSpace(currData[operatortypes.ConfigMapDataKey]), strings.TrimSpace(prevData[operatortypes.ConfigMapDataKey])) == 0 {
-		return false, false, nil
+	if strings.Compare(strings.TrimSpace(currData[operatortypes.ConfigMapDataKey]),
+		strings.TrimSpace(prevData[operatortypes.ConfigMapDataKey])) == 0 {
+		return podNeedChange{false, false, false}, nil
 	}
 	// Compare every section to get different section slice
 	currCfg, err := ini.Load([]byte(currData[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		log.Error(err, "Failed to load new ConfigMap")
-		return false, false, err
+		return podNeedChange{false, false, false}, err
 	}
 	prevCfg, err := ini.Load([]byte(prevData[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		log.Error(err, "Failed to load previous ConfigMap")
-		return false, false, err
+		return podNeedChange{false, false, false}, err
 	}
 	diffSecs := []string{}
 	currSecs := currCfg.SectionStrings()
@@ -310,24 +325,34 @@ func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap)
 			}
 		}
 	}
-	// Check whether different sections impact on NCP and nsx-node-agent
-	ncpNeedChange, agentNeedChange = false, false
+	// Check whether different sections impact on ncp, nsx-node-agent and nsx-ncp-bootstrap
+	needChange := podNeedChange{}
 	for _, sec := range diffSecs {
-		if !ncpNeedChange && inSlice(sec, operatortypes.NcpSections) {
-			ncpNeedChange = true
+		if !needChange.ncp && inSlice(sec, operatortypes.NcpSections) {
+			needChange.ncp = true
 		}
-		if !agentNeedChange && inSlice(sec, operatortypes.AgentSections) {
-			agentNeedChange = true
+		if !needChange.agent && inSlice(sec, operatortypes.AgentSections) {
+			needChange.agent = true
 		}
-		if ncpNeedChange && agentNeedChange {
+		bootstrapOpts, found := operatortypes.BootstrapOptions[sec]
+		if !needChange.bootstrap && found {
+			for _, opt := range bootstrapOpts {
+				if currCfg.Section(sec).Key(opt).Value() != prevCfg.Section(sec).Key(opt).Value() {
+					needChange.bootstrap = true
+					break
+				}
+			}
+		}
+		if needChange.ncp && needChange.agent && needChange.bootstrap {
 			break
 		}
 	}
+
 	if len(diffSecs) > 0 {
 		log.Info(fmt.Sprintf("Section %s changed", diffSecs))
 	}
 
-	return ncpNeedChange, agentNeedChange, nil
+	return needChange, nil
 }
 
 func inSlice(str string, s []string) bool {
@@ -430,4 +455,31 @@ func optionInConfigMap(configMap *corev1.ConfigMap, section string, key string) 
 		return true
 	}
 	return false
+}
+
+func getOptionInConfigMap(configMap *corev1.ConfigMap, section string, key string) string {
+	cfg, err := ini.Load([]byte(configMap.Data[operatortypes.ConfigMapDataKey]))
+	if err != nil {
+		log.Error(err, "Failed to load ConfigMap")
+		return ""
+	}
+	sec, err := cfg.GetSection(section)
+	if err != nil {
+		log.Info(fmt.Sprintf("Section %s not found", section))
+		return ""
+	}
+	if sec.HasKey(key) {
+		return sec.Key(key).Value()
+	}
+	return ""
+}
+
+func IsMTUChanged(currConfigMap *corev1.ConfigMap, prevConfigMap *corev1.ConfigMap) bool {
+	currMtu := getOptionInConfigMap(currConfigMap, "nsx_node_agent", "mtu")
+	prevMtu := getOptionInConfigMap(prevConfigMap, "nsx_node_agent", "mtu")
+	if currMtu == prevMtu {
+		return false
+	} else {
+		return true
+	}
 }
