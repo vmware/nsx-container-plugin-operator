@@ -109,9 +109,13 @@ type ReconcileConfigMap struct {
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
-
-	// Check request namespace and name to ignore other changes
-	if request.Namespace == operatortypes.OperatorNamespace {
+	watchedNamespace := r.status.OperatorNamespace
+	if watchedNamespace == "" {
+		log.Info(fmt.Sprintf("ConfigMapController can only watch a single namespace, defaulting to: %s",
+			operatortypes.OperatorNamespace))
+		watchedNamespace = operatortypes.OperatorNamespace
+	}
+	if request.Namespace == watchedNamespace {
 		if request.Name == operatortypes.ConfigMapName {
 			reqLogger.Info("Reconciling nsx-ncp-operator ConfigMap change")
 		} else if request.Name == operatortypes.NcpInstallCRDName {
@@ -133,7 +137,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	// Fetch ncp-install CRD instance
 	ncpInstallCrd := &operatorv1.NcpInstall{}
 	err := r.client.Get(context.TODO(), types.NamespacedName{Name: operatortypes.NcpInstallCRDName,
-		Namespace: operatortypes.OperatorNamespace}, ncpInstallCrd)
+		Namespace: watchedNamespace}, ncpInstallCrd)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info(fmt.Sprintf("%s CRD is not found", operatortypes.NcpInstallCRDName))
@@ -156,7 +160,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	// Fetch the ConfigMap instance
 	instance := &corev1.ConfigMap{}
 	instanceName := types.NamespacedName{
-		Namespace: operatortypes.OperatorNamespace,
+		Namespace: watchedNamespace,
 		Name:      operatortypes.ConfigMapName,
 	}
 	err = r.client.Get(context.TODO(), instanceName, instance)
@@ -211,7 +215,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	var opNsxSecret *corev1.Secret
 	if optionInConfigMap(instance, "nsx_v3", "nsx_api_cert_file") {
 		opNsxSecret = &corev1.Secret{}
-		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.OperatorNamespace, Name: operatortypes.NsxSecret}, opNsxSecret)
+		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: watchedNamespace, Name: operatortypes.NsxSecret}, opNsxSecret)
 		if err != nil {
 			log.Error(err, "Failed to get operator nsx-secret")
 			return reconcile.Result{}, err
@@ -220,7 +224,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	var opLbSecret *corev1.Secret
 	if optionInConfigMap(instance, "nsx_v3", "lb_default_cert_path") {
 		opLbSecret = &corev1.Secret{}
-		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.OperatorNamespace, Name: operatortypes.LbSecret}, opLbSecret)
+		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: watchedNamespace, Name: operatortypes.LbSecret}, opLbSecret)
 		if err != nil {
 			log.Error(err, "Failed to get operator lb-secret")
 			return reconcile.Result{}, err
@@ -303,7 +307,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 				if err != nil {
 					r.status.SetDegraded(statusmanager.ClusterConfig, "UpdateNetworkStatusError",
 						fmt.Sprintf("Failed to update network status: %v", err))
-						return reconcile.Result{}, err
+					return reconcile.Result{}, err
 				}
 			}
 			r.status.SetNotDegraded(statusmanager.ClusterConfig)

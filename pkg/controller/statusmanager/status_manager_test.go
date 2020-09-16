@@ -73,7 +73,7 @@ func conditionsEqual(oldConditions, newConditions []configv1.ClusterOperatorStat
 func TestStatusManager_set(t *testing.T) {
 	client := fake.NewFakeClient()
 	mapper := &FakeRESTMapper{}
-	status := New(client, mapper, "testing", "1.2.3")
+	status := New(client, mapper, "testing", "1.2.3", "operator-namespace")
 
 	co, err := getCO(client, "testing")
 	if !errors.IsNotFound(err) {
@@ -170,7 +170,7 @@ func TestStatusManager_set(t *testing.T) {
 func TestStatusManagerSetDegraded(t *testing.T) {
 	client := fake.NewFakeClient()
 	mapper := &FakeRESTMapper{}
-	status := New(client, mapper, "testing", "1.2.3")
+	status := New(client, mapper, "testing", "1.2.3", "operator-namespace")
 
 	co, err := getCO(client, "testing")
 	if !errors.IsNotFound(err) {
@@ -261,7 +261,7 @@ func TestStatusManagerSetDegraded(t *testing.T) {
 func TestStatusManagerSetFromDaemonSets(t *testing.T) {
 	client := fake.NewFakeClient()
 	mapper := &FakeRESTMapper{}
-	status := New(client, mapper, "testing", "1.2.3")
+	status := New(client, mapper, "testing", "1.2.3", "operator-namespace")
 
 	status.SetDaemonSets([]types.NamespacedName{
 		{Namespace: "one", Name: "alpha"},
@@ -710,7 +710,7 @@ func TestStatusManagerSetFromDaemonSets(t *testing.T) {
 func TestStatusManagerSetFromDeployments(t *testing.T) {
 	client := fake.NewFakeClient()
 	mapper := &FakeRESTMapper{}
-	status := New(client, mapper, "testing", "1.2.3")
+	status := New(client, mapper, "testing", "1.2.3", "operator-namespace")
 
 	status.SetDeployments([]types.NamespacedName{
 		{Namespace: "one", Name: "alpha"},

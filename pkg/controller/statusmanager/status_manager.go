@@ -52,10 +52,12 @@ type StatusManager struct {
 
 	daemonSets  []types.NamespacedName
 	deployments []types.NamespacedName
+
+	OperatorNamespace string
 }
 
-func New(client client.Client, mapper meta.RESTMapper, name, version string) *StatusManager {
-	return &StatusManager{client: client, mapper: mapper, name: name, version: version}
+func New(client client.Client, mapper meta.RESTMapper, name, version string, operatorNamespace string) *StatusManager {
+	return &StatusManager{client: client, mapper: mapper, name: name, version: version, OperatorNamespace: operatorNamespace}
 }
 
 // Set updates the ClusterOperator.Status with the provided conditions
@@ -119,7 +121,7 @@ func (status *StatusManager) set(reachedAvailableLevel bool, conditions ...confi
 		}
 		log.Info(fmt.Sprintf("Updated ClusterOperator with conditions:\n%s", string(buf)))
 		// Set status to ncp-install CRD
-		status.setNcpInstallCrdStatus(&co.Status.Conditions)
+		status.setNcpInstallCrdStatus(status.OperatorNamespace, &co.Status.Conditions)
 		return nil
 	})
 	if err != nil {
@@ -185,10 +187,10 @@ func (status *StatusManager) SetDeployments(deployments []types.NamespacedName) 
 	status.deployments = deployments
 }
 
-func (status *StatusManager) setNcpInstallCrdStatus(conditions *[]configv1.ClusterOperatorStatusCondition) {
+func (status *StatusManager) setNcpInstallCrdStatus(operatorNamespace string, conditions *[]configv1.ClusterOperatorStatusCondition) {
 	crd := &operatorv1.NcpInstall{}
 	err := status.client.Get(context.TODO(), types.NamespacedName{Name: operatortypes.NcpInstallCRDName,
-		Namespace: operatortypes.OperatorNamespace}, crd)
+		Namespace: operatorNamespace}, crd)
 	if err != nil {
 		log.Error(err, "Failed to get ncp-install CRD")
 		return

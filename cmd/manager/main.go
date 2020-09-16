@@ -9,14 +9,17 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"github.com/vmware/nsx-container-plugin-operator/pkg/apis"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller"
+	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	"github.com/vmware/nsx-container-plugin-operator/version"
 
+	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
@@ -59,6 +62,35 @@ func main() {
 
 	printVersion()
 
+	// Check if we need to watch a specific namespace
+	namespace, err := k8sutil.GetWatchNamespace()
+	if err != nil {
+		log.Error(err, "Failed to get watch namespace")
+		os.Exit(1)
+	}
+
+	if strings.Contains(namespace, ",") {
+		namespace = ""
+		log.Info(`This operator cannot handle multiple
+			  namespaces. The operator will watch for changes
+		          across all namespaces`)
+	}
+
+	// Set default manager options
+	options := manager.Options{
+		Namespace: namespace,
+	}
+
+	if namespace != "" && namespace != operatortypes.NsxNamespace {
+		// since the pod controller must watch nsx-system namespace,
+		// this becomes akin to a multinamespace scenario, but we
+		// will treat it as "AllNamespaces" since the MultiNamespaceCache
+		// does not load cluster-scoped resources.
+		// The namespace will be loaded anyway into the statusmanager so
+		// the configMapController will monitor only that namespace
+		options.Namespace = ""
+	}
+
 	// Get a config to talk to the apiserver
 	cfg, err := config.GetConfig()
 	if err != nil {
@@ -75,7 +107,7 @@ func main() {
 	}
 
 	// Create a new manager to provide shared dependencies and start components
-	mgr, err := manager.New(cfg, manager.Options{})
+	mgr, err := manager.New(cfg, options)
 	if err != nil {
 		log.Error(err, "")
 		os.Exit(1)
@@ -90,7 +122,7 @@ func main() {
 	}
 
 	// Setup all Controllers
-	if err := controller.AddToManager(mgr); err != nil {
+	if err := controller.AddToManager(mgr, namespace); err != nil {
 		log.Error(err, "")
 		os.Exit(1)
 	}
