@@ -25,7 +25,8 @@ import (
 	vspherelog "github.com/vmware/vsphere-automation-sdk-go/runtime/log"
 	policyclient "github.com/vmware/vsphere-automation-sdk-go/runtime/protocol/client"
 	"github.com/vmware/vsphere-automation-sdk-go/runtime/security"
-	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/infra/segments"
+	infra_segment "github.com/vmware/vsphere-automation-sdk-go/services/nsxt/infra/segments"
+	tier1_segment "github.com/vmware/vsphere-automation-sdk-go/services/nsxt/infra/tier_1s/segments"
 	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/model"
 	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/search"
 	"gopkg.in/ini.v1"
@@ -461,8 +462,19 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	// TODO: find a way to fill the segmentPort by using the return value from searchNodePortByVcNameAddress then we won't need to invoke the Get API again.
 	sl := strings.Split(*segmentPort.Path, "/")
 	segmentId := sl[len(sl)-1]
-	portsClient := segments.NewDefaultPortsClient(nsxClients.PolicyConnector)
-	*segmentPort, err = portsClient.Get(segmentId, *segmentPort.Id)
+	// the tier1 segment has path: /infra/tier-1s/<tier-1-id>/segments/<segment-id>
+	// the infra segment has path: /infra/segments/<segment-id>
+	var infraPortsClient *infra_segment.DefaultPortsClient
+	var tier1PortsClient *tier1_segment.DefaultPortsClient
+	tier1Id := ""
+	if sl[2] == "tier-1s" {
+		tier1Id = sl[3]
+		tier1PortsClient = tier1_segment.NewDefaultPortsClient(nsxClients.PolicyConnector)
+		*segmentPort, err = tier1PortsClient.Get(tier1Id, segmentId, *segmentPort.Id)
+	} else {
+		infraPortsClient = infra_segment.NewDefaultPortsClient(nsxClients.PolicyConnector)
+		*segmentPort, err = infraPortsClient.Get(segmentId, *segmentPort.Id)
+	}
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Address: nodeAddress,
@@ -503,7 +515,11 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 		var clusterTag = model.Tag{Scope: &clusterScope, Tag: &cluster}
 		segmentPort.Tags = append(segmentPort.Tags, clusterTag)
 	}
-	_, err = portsClient.Update(segmentId, *segmentPort.Id, *segmentPort)
+	if len(tier1Id) > 0 {
+		_, err = tier1PortsClient.Update(tier1Id, segmentId, *segmentPort.Id, *segmentPort)
+	} else {
+		_, err = infraPortsClient.Update(segmentId, *segmentPort.Id, *segmentPort)
+	}
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Address: nodeAddress,
