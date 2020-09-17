@@ -122,8 +122,8 @@ func getVcNameByProviderId(nsxClients *NsxClients, nodeName string, providerId s
 	if err != nil {
 		return "", err
 	}
-	for _, vm := range(vms.Results) {
-		for _, computeId := range(vm.ComputeIds) {
+	for _, vm := range vms.Results {
+		for _, computeId := range vm.ComputeIds {
 			// format of computeId: biosUuid:<uuid>
 			if providerId == string([]byte(computeId)[9:]) {
 				return vm.DisplayName, nil
@@ -242,7 +242,7 @@ func decodeData(certData string, keyData string, caData string) ([]byte, []byte,
 	return certDataDecoded, keyDataDecoded, caDataDecoded, nil
 }
 
-func writeToFile(certPath string, certData []byte, keyPath string, keyData []byte, caPath string, caData []byte) (error) {
+func writeToFile(certPath string, certData []byte, keyPath string, keyData []byte, caPath string, caData []byte) error {
 	err := ioutil.WriteFile(certPath, certData, 0644)
 	if err != nil {
 		return fmt.Errorf("Failed to write cert file %s: %v", certPath, err)
@@ -262,8 +262,13 @@ func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 	configMap := r.sharedInfo.OperatorConfigMap
 	if configMap == nil {
 		log.Info("Getting config from operator configmap")
+		watchedNamespace := r.status.OperatorNamespace
+		if watchedNamespace == "" {
+			log.Info(fmt.Sprintf("no namespace supplied for loading configMap, defaulting to: %s", operatortypes.OperatorNamespace))
+			watchedNamespace = operatortypes.OperatorNamespace
+		}
 		configMap = &corev1.ConfigMap{}
-		err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.OperatorNamespace, Name: operatortypes.ConfigMapName}, configMap)
+		err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: watchedNamespace, Name: operatortypes.ConfigMapName}, configMap)
 		if err != nil {
 			return nil, err
 		}

@@ -22,8 +22,7 @@ spec:
         key: node.kubernetes.io/not-ready
       containers:
         - name: nsx-ncp-operator
-          # Replace this with the built image name
-          image: REPLACE_IMAGE
+          image: vmware/nsx-container-plugin-operator
           command: ["/bin/bash", "-c", "nsx-ncp-operator --zap-time-encoding=iso8601"]
           imagePullPolicy: Always
           env:
@@ -35,3 +34,5 @@ spec:
               value: "nsx-ncp-operator"
             - name: NCP_IMAGE
               value: "nsx-ncp:latest"
+            - name: WATCH_NAMESPACE
+              value: "nsx-system-operator"

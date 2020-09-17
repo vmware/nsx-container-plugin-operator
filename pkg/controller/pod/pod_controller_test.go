@@ -76,7 +76,7 @@ func TestPodController_mergeAndGetNsxNcpResources(t *testing.T) {
 func getTestReconcilePod() *ReconcilePod {
 	client := fake.NewFakeClient()
 	mapper := &statusmanager.FakeRESTMapper{}
-	status := statusmanager.New(client, mapper, "testing", "1.2.3")
+	status := statusmanager.New(client, mapper, "testing", "1.2.3", "operator-namespace")
 	sharedInfo := sharedinfo.New()
 	sharedInfo.NetworkConfig = &configv1.Network{}
 
