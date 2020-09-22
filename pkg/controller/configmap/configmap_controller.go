@@ -115,6 +115,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			operatortypes.OperatorNamespace))
 		watchedNamespace = operatortypes.OperatorNamespace
 	}
+	log.Info(fmt.Sprintf("configmap controller watching events in namespace %s", watchedNamespace))
 	if request.Namespace == watchedNamespace {
 		if request.Name == operatortypes.ConfigMapName {
 			reqLogger.Info("Reconciling nsx-ncp-operator ConfigMap change")

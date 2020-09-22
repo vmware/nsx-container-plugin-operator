@@ -18,18 +18,19 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Networking, Security
     description: An operator which provides NSX as default network for
-      an Openshit cluster. Simplifies the process of installing and
+      an Openshift cluster. Simplifies the process of installing and
       upgrading the NSX Container plugin (NCP) components running in
-      the Openshift cluster. The operator also allows for detailed
-      monitoring of NCP components and reacts to configuration changes. 
-    # Temporary image location on dockerhub
-    containerImage: vmware/nsx-container-plugin-operator:0.0.4
+      an Openshift cluster. The operator also allows for detailed
+      monitoring of NCP components and reacts to configuration changes.
+      This is a cluster operator and must be installed upon cluster creation;
+      for more information please refer to install-time instructions.
+    containerImage: vmware/nsx-container-plugin-operator:0.1.0
+    marketplace.openshift.io/action-text: install-time Instructions
+    marketplace.openshift.io/remote-workflow: https://docs.vmware.com/en/VMware-NSX-T-Data-Center/3.0/ncp-openshift/GUID-303605D3-6447-45FE-8FE1-3CAF0F7FC578.html
+    repository: https://github.com/vmware/nsx-container-plugin/operator
     support: VMware
     certified: "True"
-  name: nsx-container-plugin-operator.v0.0.4
-  marketplace.openshift.io/action-text: Install-time Instructions
-  marketplace.openshift.io/remote-workflow: https://github.com/vmware/nsx-container-plugin-operator/blob/master/README.md
-  repository: https://github.com/vmware/nsx-container-plugin/operator
+  name: nsx-container-plugin-operator.v0.1.0
 spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
@@ -106,7 +107,7 @@ spec:
                 key: node.kubernetes.io/not-ready
               containers:
                 - name: nsx-ncp-operator
-                  image: vmware/nsx-container-plugin-operator:0.0.4
+                  image: vmware/nsx-container-plugin-operator:0.1.0
                   command: ["/bin/bash", "-c", "nsx-ncp-operator --zap-time-encoding=iso8601"]
                   imagePullPolicy: Always
                   env:
@@ -331,4 +332,4 @@ spec:
       email: simeonovy@vmware.com
   provider:
     name: VMware
-  version: 0.0.4
+  version: 0.1.0
