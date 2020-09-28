@@ -10,7 +10,6 @@ import (
 
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/base64"
 	"io/ioutil"
 	"net/http"
 
@@ -226,22 +225,6 @@ func getConnectorTLSConfig(insecure bool, clientCertFile string, clientKeyFile s
 	return &tlsConfig, nil
 }
 
-func decodeData(certData string, keyData string, caData string) ([]byte, []byte, []byte, error) {
-	certDataDecoded, err := base64.StdEncoding.DecodeString(certData)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("Error while decoding certData: %v", err)
-	}
-	keyDataDecoded, err := base64.StdEncoding.DecodeString(keyData)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("Error while decoding keyData: %v", err)
-	}
-	caDataDecoded, err := base64.StdEncoding.DecodeString(caData)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("Error while decoding caData: %v", err)
-	}
-	return certDataDecoded, keyDataDecoded, caDataDecoded, nil
-}
-
 func writeToFile(certPath string, certData []byte, keyPath string, keyData []byte, caPath string, caData []byte) error {
 	err := ioutil.WriteFile(certPath, certData, 0644)
 	if err != nil {
@@ -294,23 +277,35 @@ func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 	nsxClients.Cluster = cluster
 
 	// Get cert/key/ca, then write then into temp files
-	var certData = cfg.Section("operator").Key("nsx_api_cert").Value()
-	var keyData = cfg.Section("operator").Key("nsx_api_private_key").Value()
-	var caData = cfg.Section("operator").Key("nsx_ca").Value()
-	certDataDecoded, keyDataDecoded, caDataDecoded, err := decodeData(certData, keyData, caData)
-	if err != nil {
-		return nil, err
+	var certData, keyData, caData []byte
+	nsxSecret := r.sharedInfo.OperatorNsxSecret
+	if nsxSecret == nil {
+		watchedNamespace := r.status.OperatorNamespace
+		if watchedNamespace == "" {
+			log.Info(fmt.Sprintf("no namespace supplied for loading configMap, defaulting to: %s", operatortypes.OperatorNamespace))
+			watchedNamespace = operatortypes.OperatorNamespace
+		}
+		nsxSecret = &corev1.Secret{}
+		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: watchedNamespace, Name: operatortypes.NsxSecret}, nsxSecret)
+		if err != nil {
+			log.Info("Failed to get operator nsx-secret")
+		}
+	}
+	if nsxSecret != nil {
+		certData = nsxSecret.Data["tls.crt"]
+		keyData = nsxSecret.Data["tls.key"]
+		caData = nsxSecret.Data["tls.ca"]
 	}
 
 	tmpCertPath := ""
 	tmpKeyPath := ""
 	tmpCAPath := ""
 	// cert/key is preferred to connect to NSX
-	if len(certDataDecoded) > 0 {
+	if len(certData) > 0 {
 		tmpCertPath = operatortypes.NsxCertTempPath
 		tmpKeyPath = operatortypes.NsxKeyTempPath
 		tmpCAPath = operatortypes.NsxCATempPath
-		err = writeToFile(tmpCertPath, certDataDecoded, tmpKeyPath, keyDataDecoded, tmpCAPath, caDataDecoded)
+		err = writeToFile(tmpCertPath, certData, tmpKeyPath, keyData, tmpCAPath, caData)
 		if err != nil {
 			return nil, err
 		}

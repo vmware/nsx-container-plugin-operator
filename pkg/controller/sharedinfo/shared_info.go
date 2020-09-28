@@ -17,6 +17,7 @@ type SharedInfo struct {
 
 	NetworkConfig     *configv1.Network
 	OperatorConfigMap *corev1.ConfigMap
+	OperatorNsxSecret *corev1.Secret
 }
 
 func New() *SharedInfo {
