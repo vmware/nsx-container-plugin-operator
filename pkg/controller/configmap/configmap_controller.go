@@ -244,6 +244,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	r.updateSharedInfoWithNsxNcpResources(objs)
 	r.sharedInfo.NetworkConfig = networkConfig
 	r.sharedInfo.OperatorConfigMap = instance
+	r.sharedInfo.OperatorNsxSecret = opNsxSecret
 
 	// Generate applied operator ConfigMap
 	if appliedConfigMap == nil {
