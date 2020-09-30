@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strconv"
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-network-operator/pkg/apply"
@@ -280,31 +281,34 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	networkConfigChanged := true
 	if r.sharedInfo.NetworkConfig != nil {
 		networkConfigChanged = HasNetworkConfigChange(networkConfig, r.sharedInfo.NetworkConfig)
+		if !networkConfigChanged {
+			networkConfigChanged = IsMTUChanged(instance, appliedConfigMap)
+		}
 	}
-	ncpNeedChange, agentNeedChange, err := NeedApplyChange(instance, appliedConfigMap)
+	needChange, err := NeedApplyChange(instance, appliedConfigMap)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
-	if !ncpNeedChange {
+	if !needChange.ncp {
 		// Compare nsx-secret and lb-secret
-		ncpNeedChange, err = r.isSecretChanged(opNsxSecret, opLbSecret)
+		needChange.ncp, err = r.isSecretChanged(opNsxSecret, opLbSecret)
 		if err != nil {
 			return reconcile.Result{Requeue: true}, err
 		}
 	}
 
-	if !ncpNeedChange && !agentNeedChange {
+	if !needChange.ncp && !needChange.agent && !needChange.bootstrap {
 		// Check if NCP_IMAGE or nsx-ncp replicas changed
-		ncpChanged, err := r.isNcpDeploymentChanged(ncpReplicas)
+		needChange.ncp, err = r.isNcpDeploymentChanged(ncpReplicas)
 		if err != nil {
 			return reconcile.Result{Requeue: true}, err
 		}
 
-		if !ncpChanged {
+		if !needChange.ncp {
 			log.Info("no new configuration needs to apply")
 			// Check if network config status must be updated
 			if networkConfigChanged {
-				err = updateNetworkStatus(networkConfig, r)
+				err = updateNetworkStatus(networkConfig, instance, r)
 				if err != nil {
 					r.status.SetDegraded(statusmanager.ClusterConfig, "UpdateNetworkStatusError",
 						fmt.Sprintf("Failed to update network status: %v", err))
@@ -339,7 +343,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Delete old NCP and nsx-node-agent pods
-	if appliedConfigMap != nil && ncpNeedChange {
+	if appliedConfigMap != nil && needChange.ncp {
 		err = deleteExistingPods(r.client, operatortypes.NsxNcpDeploymentName)
 		if err != nil {
 			r.status.SetDegraded(statusmanager.OperatorConfig, "DeleteOldPodsError",
@@ -348,7 +352,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			return reconcile.Result{}, err
 		}
 	}
-	if appliedConfigMap != nil && agentNeedChange {
+	if appliedConfigMap != nil && needChange.agent {
 		err = deleteExistingPods(r.client, operatortypes.NsxNodeAgentDsName)
 		if err != nil {
 			r.status.SetDegraded(statusmanager.OperatorConfig, "DeleteOldPodsError",
@@ -357,11 +361,21 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			return reconcile.Result{}, err
 		}
 	}
+	if appliedConfigMap != nil && needChange.bootstrap {
+		err = deleteExistingPods(r.client, operatortypes.NsxNcpBootstrapDsName)
+		if err != nil {
+			r.status.SetDegraded(statusmanager.OperatorConfig, "DeleteOldPodsError",
+				fmt.Sprintf("DaemonSet %s is not using the latest configuration updates because: %v",
+					operatortypes.NsxNcpBootstrapDsName, err))
+			return reconcile.Result{}, err
+		}
+	}
+
 	appliedConfigMap = instance
 
 	// Update network CRD status
 	if networkConfigChanged {
-		err = updateNetworkStatus(networkConfig, r)
+		err = updateNetworkStatus(networkConfig, instance, r)
 		if err != nil {
 			r.status.SetDegraded(statusmanager.ClusterConfig, "UpdateNetworkStatusError",
 				fmt.Sprintf("Failed to update network status: %v", err))
@@ -374,8 +388,8 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	return reconcile.Result{}, nil
 }
 
-func updateNetworkStatus(networkConfig *configv1.Network, r *ReconcileConfigMap) error {
-	status := buildNetworkStatus(networkConfig)
+func updateNetworkStatus(networkConfig *configv1.Network, configMap *corev1.ConfigMap, r *ReconcileConfigMap) error {
+	status := buildNetworkStatus(networkConfig, configMap)
 	// Render information
 	networkConfig.Status = status
 	data, err := k8sutil.ToUnstructured(networkConfig)
@@ -398,7 +412,7 @@ func updateNetworkStatus(networkConfig *configv1.Network, r *ReconcileConfigMap)
 	return nil
 }
 
-func buildNetworkStatus(networkConfig *configv1.Network) configv1.NetworkStatus {
+func buildNetworkStatus(networkConfig *configv1.Network, configMap *corev1.ConfigMap) configv1.NetworkStatus {
 	// Values extracted from spec are serviceNetwork and clusterNetworkCIDR.
 	// HostPrefix is ignored.
 	status := configv1.NetworkStatus{}
@@ -413,6 +427,9 @@ func buildNetworkStatus(networkConfig *configv1.Network) configv1.NetworkStatus 
 			})
 	}
 	status.NetworkType = networkConfig.Spec.NetworkType
+	// Set MTU
+	mtu := getOptionInConfigMap(configMap, "nsx_node_agent", "mtu")
+	status.ClusterNetworkMTU, _ = strconv.Atoi(mtu)
 	return status
 }
 

@@ -58,6 +58,8 @@ func TestFillDefaults(t *testing.T) {
 	assert.Equal(t, "True", cfg.Section("ha").Key("enable").Value())
 	assert.Equal(t, "False", cfg.Section("k8s").Key("process_oc_network").Value())
 	assert.Equal(t, "10.0.0.0/24", cfg.Section("nsx_v3").Key("container_ip_blocks").Value())
+	assert.Equal(t, "3", cfg.Section("nsx_node_agent").Key("waiting_before_cni_response").Value())
+	assert.Equal(t, "1500", cfg.Section("nsx_node_agent").Key("mtu").Value())
 }
 
 func TestAppendErrorIfNotNil(t *testing.T) {
@@ -122,7 +124,7 @@ func TestValidateConfigMap(t *testing.T) {
 	mockConfigMap := createMockConfigMap()
 
 	errs := validateConfigMap(mockConfigMap)
-	assert.Equal(t, 3, len(errs))
+	assert.Equal(t, 4, len(errs))
 
 	data := &mockConfigMap.Data
 	cfg, _ := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
@@ -130,6 +132,7 @@ func TestValidateConfigMap(t *testing.T) {
 	cfg.Section("nsx_v3").NewKey("nsx_api_managers", "mockIP")
 	cfg.Section("coe").NewKey("enable_snat", "False")
 	cfg.Section("nsx_v3").NewKey("tier0_gateway", "mockT0")
+	cfg.Section("nsx_node_agent").NewKey("mtu", "1500")
 	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
 
 	errs = validateConfigMap(mockConfigMap)
@@ -183,33 +186,39 @@ func TestRender(t *testing.T) {
 func TestNeedApplyChange(t *testing.T) {
 	currConfigMap := createMockConfigMap()
 	var prevConfigMap *corev1.ConfigMap = nil
-	ncpNeedChange, agetnNeedChange, err := NeedApplyChange(currConfigMap, prevConfigMap)
-	assert.True(t, ncpNeedChange)
-	assert.True(t, agetnNeedChange)
+	needChange, err := NeedApplyChange(currConfigMap, prevConfigMap)
+	assert.True(t, needChange.ncp)
+	assert.True(t, needChange.agent)
+	assert.True(t, needChange.bootstrap)
 	assert.Nil(t, err)
 
 	prevConfigMap = createMockConfigMap()
-	ncpNeedChange, agetnNeedChange, err = NeedApplyChange(currConfigMap, prevConfigMap)
-	assert.False(t, ncpNeedChange)
-	assert.False(t, agetnNeedChange)
+	needChange, err = NeedApplyChange(currConfigMap, prevConfigMap)
+	assert.False(t, needChange.ncp)
+	assert.False(t, needChange.agent)
+	assert.False(t, needChange.bootstrap)
 	assert.Nil(t, err)
 
 	data := &prevConfigMap.Data
 	cfg, _ := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 
 	cfg.Section("nsx_node_agent").NewKey("ovs_uplink_port", "eth1")
+	cfg.Section("nsx_node_agent").NewKey("mtu", "1600")
 	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
-	ncpNeedChange, agetnNeedChange, err = NeedApplyChange(currConfigMap, prevConfigMap)
-	assert.False(t, ncpNeedChange)
-	assert.True(t, agetnNeedChange)
+	needChange, err = NeedApplyChange(currConfigMap, prevConfigMap)
+	assert.False(t, needChange.ncp)
+	assert.True(t, needChange.agent)
+	assert.True(t, needChange.bootstrap)
 	assert.Nil(t, err)
 
 	cfg.Section("nsx_node_agent").DeleteKey("ovs_uplink_port")
+	cfg.Section("nsx_node_agent").DeleteKey("mtu")
 	cfg.Section("DEFAULT").NewKey("debug", "True")
 	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
-	ncpNeedChange, agetnNeedChange, err = NeedApplyChange(currConfigMap, prevConfigMap)
-	assert.True(t, ncpNeedChange)
-	assert.True(t, agetnNeedChange)
+	needChange, err = NeedApplyChange(currConfigMap, prevConfigMap)
+	assert.True(t, needChange.ncp)
+	assert.True(t, needChange.agent)
+	assert.False(t, needChange.bootstrap)
 	assert.Nil(t, err)
 }
 
@@ -292,4 +301,27 @@ func TestOptionInConfigMap(t *testing.T) {
 	assert.True(t, optionInConfigMap(mockConfigMap, "nsx_v3", "nsx_api_cert_file"))
 	assert.False(t, optionInConfigMap(mockConfigMap, "nsx_v3", "lb_default_cert_path"))
 	assert.False(t, optionInConfigMap(mockConfigMap, "nsx_v3", "mock_key"))
+}
+
+func TestGetOptionInConfigMap(t *testing.T) {
+	mockConfigMap := createMockConfigMap()
+	data := &mockConfigMap.Data
+	cfg, _ := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+	cfg.Section("nsx_node_agent").NewKey("mtu", "1500")
+	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+
+	assert.Equal(t, "1500", getOptionInConfigMap(mockConfigMap, "nsx_node_agent", "mtu"))
+	assert.Equal(t, "", getOptionInConfigMap(mockConfigMap, "nsx_node_agent", "test"))
+}
+
+func TestIsMTUChanged(t *testing.T) {
+	currConfigMap := createMockConfigMap()
+	prevConfigMap := createMockConfigMap()
+	assert.False(t, IsMTUChanged(currConfigMap, prevConfigMap))
+
+	data := &currConfigMap.Data
+	cfg, _ := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+	cfg.Section("nsx_node_agent").NewKey("mtu", "1600")
+	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+	assert.True(t, IsMTUChanged(currConfigMap, prevConfigMap))
 }
