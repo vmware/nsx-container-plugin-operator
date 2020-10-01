@@ -4,8 +4,11 @@
 package pod
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"strings"
 	"time"
 
 	configv1 "github.com/openshift/api/config/v1"
@@ -14,7 +17,16 @@ import (
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -23,11 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-
-	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 )
 
 var log = logf.Log.WithName("controller_pod")
@@ -156,6 +163,13 @@ func (r *ReconcilePod) Reconcile(request reconcile.Request) (reconcile.Result, e
 		return reconcile.Result{Requeue: true}, err
 	}
 
+	if request.Name == operatortypes.NsxNodeAgentDsName {
+		if err := r.recreateNodeAgentPodsIfInvalidResolvConf(
+			request.Name); err != nil {
+			return reconcile.Result{Requeue: true}, err
+		}
+	}
+
 	return reconcile.Result{RequeueAfter: ResyncPeriod}, nil
 }
 
@@ -249,4 +263,110 @@ func (r *ReconcilePod) createK8sObject(obj *unstructured.Unstructured) error {
 		return err
 	}
 	return nil
+}
+
+func (r *ReconcilePod) recreateNodeAgentPodsIfInvalidResolvConf(
+	resName string) error {
+	podsInCLB, err := identifyPodsInCLBDueToInvalidResolvConf(r.client)
+	if err != nil {
+		log.Error(err, "Could not identify if any pod is in CLB because "+
+			"of invalid resolv.conf")
+		return err
+	}
+	if len(podsInCLB) > 0 && !deletePods(podsInCLB, r.client) {
+		err := errors.New("Error occured while trying to restart pods in " +
+			"CLB because of invalid resolv.conf")
+		log.Error(err, "")
+		return err
+	}
+	return nil
+}
+
+func identifyPodsInCLBDueToInvalidResolvConf(c client.Client) (
+	[]corev1.Pod, error) {
+	var podsInCLB []corev1.Pod
+	podList := &corev1.PodList{}
+	nodeAgentLabelSelector := labels.SelectorFromSet(
+		map[string]string{"component": operatortypes.NsxNodeAgentDsName})
+	err := c.List(context.TODO(), podList, &client.ListOptions{
+		LabelSelector: nodeAgentLabelSelector})
+	if err != nil {
+		return nil, err
+	}
+	for _, pod := range podList.Items {
+		if isNodeAgentContainerInCLB(&pod) {
+			nodeAgentLogs, err := getContainerLogsInPod(
+				&pod, operatortypes.NsxNodeAgentContainerName)
+			if err != nil {
+				log.Error(err, "Error occured while getting container logs")
+				return nil, err
+			}
+			if strings.Contains(
+				nodeAgentLogs, "Failed to establish a new connection: "+
+					"[Errno -2] Name or service not known") {
+				log.Info(fmt.Sprintf(
+					"Pod %v is in CLB because of invalid resolv.conf. "+
+						"It shall be restarted", pod.Name))
+				podsInCLB = append(podsInCLB, pod)
+			}
+		}
+	}
+	return podsInCLB, nil
+}
+
+func isNodeAgentContainerInCLB(pod *corev1.Pod) bool {
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if containerStatus.Name == operatortypes.NsxNodeAgentContainerName {
+			if containerStatus.State.Waiting != nil &&
+				containerStatus.State.Waiting.Reason == "CrashLoopBackOff" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+var getContainerLogsInPod = func(pod *corev1.Pod, containerName string) (
+	string, error) {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return "", err
+	}
+	clientSet, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return "", err
+	}
+	logLinesRetrieved := int64(50)
+	podLogOptions := &corev1.PodLogOptions{
+		Container: operatortypes.NsxNodeAgentContainerName,
+		Previous:  true,
+		TailLines: &logLinesRetrieved}
+	podLogs, err := clientSet.CoreV1().Pods(pod.Namespace).GetLogs(
+		pod.Name, podLogOptions).Stream()
+	if err != nil {
+		return "", err
+	}
+	defer podLogs.Close()
+	buf := new(bytes.Buffer)
+	_, err = io.Copy(buf, podLogs)
+	if err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+func deletePods(pods []corev1.Pod, c client.Client) bool {
+	policy := metav1.DeletePropagationForeground
+	allPodsDeleted := true
+	for _, pod := range pods {
+		err := c.Delete(
+			context.TODO(), &pod, client.GracePeriodSeconds(5),
+			client.PropagationPolicy(policy))
+		if err != nil {
+			log.Error(err, fmt.Sprintf("Unable to delete pod %v. Its "+
+				"deletion will be retried later", pod.Name))
+			allPodsDeleted = false
+		}
+	}
+	return allPodsDeleted
 }
