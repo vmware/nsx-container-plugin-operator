@@ -403,10 +403,10 @@ func updateNetworkStatus(networkConfig *configv1.Network, configMap *corev1.Conf
 			log.Error(err, fmt.Sprintf("Could not apply (%s) %s/%s", data.GroupVersionKind(),
 				data.GetNamespace(), data.GetName()))
 			return err
-		} else {
-			log.Error(err, "Retrieved data for updating network status is empty.")
-			return err
 		}
+	} else {
+		log.Error(err, "Retrieved data for updating network status is empty.")
+		return err
 	}
 	log.Info("Successfully updated Network Status")
 	return nil
