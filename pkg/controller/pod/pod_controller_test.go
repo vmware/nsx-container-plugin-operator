@@ -5,6 +5,7 @@ package pod
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -13,6 +14,8 @@ import (
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -76,7 +79,8 @@ func TestPodController_mergeAndGetNsxNcpResources(t *testing.T) {
 func getTestReconcilePod() *ReconcilePod {
 	client := fake.NewFakeClient()
 	mapper := &statusmanager.FakeRESTMapper{}
-	status := statusmanager.New(client, mapper, "testing", "1.2.3", "operator-namespace")
+	status := statusmanager.New(
+		client, mapper, "testing", "1.2.3", "operator-namespace")
 	sharedInfo := sharedinfo.New()
 	sharedInfo.NetworkConfig = &configv1.Network{}
 
@@ -220,11 +224,128 @@ func (r *ReconcilePod) testReconcileOnWatchedResourceWhenDeleted(t *testing.T) {
 	r.client.Delete(context.TODO(), ncpDeployment)
 }
 
+func (r *ReconcilePod) testReconcileOnCLBNsxNodeAgentInvalidResolvConf(
+	t *testing.T) {
+	c := r.client
+	originalSetControllerReferenceFunc := SetControllerReference
+	originalApplyObject := ApplyObject
+	defer func() {
+		SetControllerReference = originalSetControllerReferenceFunc
+		ApplyObject = originalApplyObject
+	}()
+	SetControllerReference = func(owner, controlled metav1.Object, scheme *runtime.Scheme) error {
+		return nil
+	}
+	ApplyObject = func(ctx context.Context, client k8sclient.Client, obj *unstructured.Unstructured) error {
+		return nil
+	}
+	// Reconcile should NOT recreate nsx-node-agent pod if it's in CLB but not
+	// because of invalid resolv.conf
+	nodeAgentPod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nsx-node-agent",
+			Namespace: "nsx-system",
+			Labels: map[string]string{
+				"component": "nsx-node-agent",
+			},
+		},
+		Status: corev1.PodStatus{
+			ContainerStatuses: []corev1.ContainerStatus{
+				{
+					Name: "nsx-node-agent",
+					State: corev1.ContainerState{
+						Waiting: &corev1.ContainerStateWaiting{
+							Reason: "CrashLoopBackOff",
+						},
+					},
+				},
+			},
+		},
+	}
+	c.Create(context.TODO(), nodeAgentPod)
+	oldGetContainerLogsInPod := getContainerLogsInPod
+	defer func() {
+		getContainerLogsInPod = oldGetContainerLogsInPod
+	}()
+	getContainerLogsInPod = func(pod *corev1.Pod, containerName string) (
+		string, error) {
+		return "", nil
+	}
+	req := reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "nsx-node-agent",
+			Namespace: "nsx-system",
+		},
+	}
+	res, err := r.Reconcile(req)
+	if err != nil {
+		t.Fatalf("reconcile: (%v)", err)
+	}
+	if res.RequeueAfter != ResyncPeriod {
+		t.Fatalf("reconcile should requeue the request after %v but it did "+
+			"after %v", ResyncPeriod, res.RequeueAfter)
+	}
+	obj := &corev1.Pod{}
+	namespacedName := types.NamespacedName{
+		Name:      "nsx-node-agent",
+		Namespace: "nsx-system",
+	}
+	err = c.Get(context.TODO(), namespacedName, obj)
+	if err != nil {
+		t.Fatalf("failed to find nsx-node-agent pod")
+	}
+
+	// Reconcile should recreate nsx-node-agent pod if it's in CLB and
+	// because of invaid resolv.conf
+	nodeAgentPod = &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nsx-node-agent",
+			Namespace: "nsx-system",
+			Labels: map[string]string{
+				"component": "nsx-node-agent",
+			},
+		},
+		Status: corev1.PodStatus{
+			ContainerStatuses: []corev1.ContainerStatus{
+				{
+					Name: "nsx-node-agent",
+					State: corev1.ContainerState{
+						Waiting: &corev1.ContainerStateWaiting{
+							Reason: "CrashLoopBackOff",
+						},
+					},
+				},
+			},
+		},
+	}
+	c.Update(context.TODO(), nodeAgentPod)
+	getContainerLogsInPod = func(pod *corev1.Pod, containerName string) (
+		string, error) {
+		return "Failed to establish a new connection: [Errno -2] Name " +
+			"or service not known", nil
+	}
+	res, err = r.Reconcile(req)
+	if err != nil {
+		t.Fatalf("reconcile: (%v)", err)
+	}
+	if res.RequeueAfter != ResyncPeriod {
+		t.Fatalf("reconcile should requeue the request after %v but it did "+
+			"after %v", ResyncPeriod, res.RequeueAfter)
+	}
+	obj = &corev1.Pod{}
+	err = c.Get(context.TODO(), namespacedName, obj)
+	if !errors.IsNotFound(err) {
+		t.Fatalf("failed to delete nsx-node-agent pod in CLB because of " +
+			"invalid resolv.conf")
+	}
+}
+
 func TestPodControllerReconcile(t *testing.T) {
 	r := getTestReconcilePod()
 	r.testReconcileOnNotWatchedResource(t)
 	r.testReconcileOnWatchedResource(t)
 	r.testReconcileOnWatchedResourceWhenDeleted(t)
+	r.testReconcileOnCLBNsxNodeAgentInvalidResolvConf(t)
 }
 
 func TestPodController_identifyAndGetInstance(t *testing.T) {
@@ -237,4 +358,174 @@ func TestPodController_identifyAndGetInstance(t *testing.T) {
 	if !reflect.DeepEqual(identifyAndGetInstance(operatortypes.NsxNodeAgentDsName), &appsv1.DaemonSet{}) {
 		t.Fatalf("nsx-ncp instance must be a DaemonSet")
 	}
+}
+
+func TestPodController_deletePods(t *testing.T) {
+	c := fake.NewFakeClient()
+	nodeAgentPod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nsx-node-agent",
+			Namespace: "nsx-system",
+		},
+	}
+	c.Create(context.TODO(), nodeAgentPod)
+	deletePods([]corev1.Pod{*nodeAgentPod}, c)
+	obj := &corev1.Pod{}
+	namespacedName := types.NamespacedName{
+		Name:      "nsx-node-agent",
+		Namespace: "nsx-system",
+	}
+	err := c.Get(context.TODO(), namespacedName, obj)
+	if !errors.IsNotFound(err) {
+		t.Fatalf("failed to delete nsx-node-agent pod")
+	}
+}
+
+func _test_no_labels(c k8sclient.Client, t *testing.T) {
+	nodeAgentPod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nsx-node-agent",
+			Namespace: "nsx-system",
+		},
+	}
+	c.Create(context.TODO(), nodeAgentPod)
+	podsInCLB, err := identifyPodsInCLBDueToInvalidResolvConf(c)
+
+	if err != nil {
+		t.Fatalf(fmt.Sprintf("Failed to identify Pods in CLB when there "+
+			"is none. Got error: %v", err))
+	}
+	if len(podsInCLB) > 0 {
+		t.Fatalf("Incorrect identification of pods in CLB. Identified " +
+			"pods in CLB when there should be None.")
+	}
+}
+
+func _test_normal_running(c k8sclient.Client, t *testing.T) {
+	nodeAgentPod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nsx-node-agent",
+			Namespace: "nsx-system",
+			Labels: map[string]string{
+				"component": "nsx-node-agent",
+			},
+		},
+		Status: corev1.PodStatus{
+			ContainerStatuses: []corev1.ContainerStatus{
+				{
+					Name: "nsx-node-agent",
+					State: corev1.ContainerState{
+						Running: &corev1.ContainerStateRunning{
+							StartedAt: metav1.Now().Rfc3339Copy(),
+						},
+					},
+				},
+			},
+		},
+	}
+	c.Update(context.TODO(), nodeAgentPod)
+	podsInCLB, err := identifyPodsInCLBDueToInvalidResolvConf(c)
+	if err != nil {
+		t.Fatalf(fmt.Sprintf("Failed to identify Pods in CLB when there "+
+			"is none. Got error: %v", err))
+	}
+	if len(podsInCLB) > 0 {
+		t.Fatalf("Incorrect identification of pods in CLB. Identified " +
+			"pods in CLB when there should be None.")
+	}
+}
+
+func _test_clb_but_not_invalid_resolv(c k8sclient.Client, t *testing.T) {
+	nodeAgentPod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nsx-node-agent",
+			Namespace: "nsx-system",
+			Labels: map[string]string{
+				"component": "nsx-node-agent",
+			},
+		},
+		Status: corev1.PodStatus{
+			ContainerStatuses: []corev1.ContainerStatus{
+				{
+					Name: "nsx-node-agent",
+					State: corev1.ContainerState{
+						Waiting: &corev1.ContainerStateWaiting{
+							Reason: "CrashLoopBackOff",
+						},
+					},
+				},
+			},
+		},
+	}
+	c.Update(context.TODO(), nodeAgentPod)
+	oldGetContainerLogsInPod := getContainerLogsInPod
+	defer func() {
+		getContainerLogsInPod = oldGetContainerLogsInPod
+	}()
+	getContainerLogsInPod = func(pod *corev1.Pod, containerName string) (
+		string, error) {
+		return "", nil
+	}
+	podsInCLB, err := identifyPodsInCLBDueToInvalidResolvConf(c)
+	if err != nil {
+		t.Fatalf(fmt.Sprintf("Failed to identify Pods in CLB when there "+
+			"is none. Got error: %v", err))
+	}
+	if len(podsInCLB) > 0 {
+		t.Fatalf("Incorrect identification of pods in CLB. Identified " +
+			"pods in CLB when there should be None.")
+	}
+}
+
+func _test_clb_due_to_invalid_resolv(c k8sclient.Client, t *testing.T) {
+	nodeAgentPod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nsx-node-agent",
+			Namespace: "nsx-system",
+			Labels: map[string]string{
+				"component": "nsx-node-agent",
+			},
+		},
+		Status: corev1.PodStatus{
+			ContainerStatuses: []corev1.ContainerStatus{
+				{
+					Name: "nsx-node-agent",
+					State: corev1.ContainerState{
+						Waiting: &corev1.ContainerStateWaiting{
+							Reason: "CrashLoopBackOff",
+						},
+					},
+				},
+			},
+		},
+	}
+	c.Update(context.TODO(), nodeAgentPod)
+	oldGetContainerLogsInPod := getContainerLogsInPod
+	defer func() {
+		getContainerLogsInPod = oldGetContainerLogsInPod
+	}()
+	getContainerLogsInPod = func(pod *corev1.Pod, containerName string) (
+		string, error) {
+		return "Failed to establish a new connection: [Errno -2] Name " +
+			"or service not known", nil
+	}
+	podsInCLB, err := identifyPodsInCLBDueToInvalidResolvConf(c)
+	if err != nil {
+		t.Fatalf(fmt.Sprintf("Failed to identify Pods in CLB when there "+
+			"is none. Got error: %v", err))
+	}
+	if len(podsInCLB) == 0 {
+		t.Fatalf("Incorrect identification of pods in CLB. No pods " +
+			"identified in CLB when expected.")
+	}
+}
+
+func TestPodController_identifyPodsInCLBDueToInvalidResolvConf(
+	t *testing.T) {
+	c := fake.NewFakeClient()
+
+	_test_no_labels(c, t)
+	_test_normal_running(c, t)
+	_test_clb_but_not_invalid_resolv(c, t)
+	_test_clb_due_to_invalid_resolv(c, t)
 }

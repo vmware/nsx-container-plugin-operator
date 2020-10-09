@@ -31,4 +31,5 @@ const (
 	NsxCertTempPath             string = "/tmp/nsx.cert"
 	NsxKeyTempPath              string = "/tmp/nsx.key"
 	NsxCATempPath               string = "/tmp/nsx.ca"
+	NsxNodeAgentContainerName   string = "nsx-node-agent"
 )

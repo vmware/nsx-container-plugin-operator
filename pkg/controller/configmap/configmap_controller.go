@@ -434,7 +434,7 @@ func buildNetworkStatus(networkConfig *configv1.Network, configMap *corev1.Confi
 }
 
 func deleteExistingPods(c client.Client, component string) error {
-	var period int64 = 0
+	var period int64 = 5
 	policy := metav1.DeletePropagationForeground
 	label := map[string]string{"component": component}
 	err := c.DeleteAllOf(context.TODO(), &corev1.Pod{}, client.InNamespace(operatortypes.NsxNamespace),
