@@ -72,6 +72,24 @@ data:
     # If set to true, log output to standard error.
     #use_stderr = True
 
+    # Destination to send api log to. STDOUT or STDERR for console output. FILE
+    # to write log to file configured in "api_log_file". NONE to disable api
+    # log.
+    # Choices: STDOUT STDERR FILE NONE
+    #api_log_output = NONE
+
+    # Name of log file to send API access log to.
+    #api_log_file = ncp_api_log.txt
+
+    # Interval in seconds to logs api call to output configured in
+    # api_log_output
+    #api_log_interval = 60
+
+    # When api_log_output is not NONE, this option determines if api calls
+    # should be collected per NSX cluster or individual NSX manager.
+    # Choices: API_LOG_PER_ENDPOINT API_LOG_PER_CLUSTER
+    #api_log_mode = API_LOG_PER_ENDPOINT
+
     # If set to true, use syslog for logging.
     #use_syslog = False
 
@@ -84,8 +102,21 @@ data:
     # max MB for each compressed file. Defaults to 100 MB.
     #log_rotation_file_max_mb = 100
 
+    # max MB for each compressed file for API logs.Defaults to 10 MB.
+    #api_log_rotation_file_max_mb = 10
+
     # Total number of compressed backup files to store. Defaults to 5.
     #log_rotation_backup_count = 5
+
+    # Total number of compressed backup files to store API logs. Defaults to 5.
+    #api_log_rotation_backup_count = 5
+
+    # Log level for the root logger. If debug=True, the default root logger
+    # level will be DEBUG regardless of the value of this option. If this
+    # option is unset, the default root logger level will be either DEBUG or
+    # INFO according to the debug option value
+    # Choices: NOTSET DEBUG INFO WARNING ERROR CRITICAL
+    #loglevel = <None>
 
 
 
@@ -258,6 +289,11 @@ data:
 
     # Option to use single-tier router for the container cluster network
     single_tier_topology = True
+
+    # Option to use single-tier router for the container cluster network. Each
+    # namespace will have dedicated tier-1 router created. Namespaces with
+    # "sr_shared_res: true" annotation will share t1 and lbs.
+    #single_tier_sr_topology = False
 
     # Resource ID of the external ip pools that will be used only for
     # allocating IP addresses for Ingress controller and LB service. If
@@ -433,6 +469,15 @@ data:
     # while participating in TLS handshake with the client
     #client_ssl_profile = <None>
 
+    # Enable security policy notification, If this optionis enabled, NCP will
+    # configure container network afterNSX creates logical port and finishes
+    # security policysynchronization
+    #wait_for_security_policy_sync = False
+
+
+    # Set this to True to enable rule tag as cluster name in DFW logs for k8s
+    #enable_rule_tag = True
+
 
     [ha]
 
@@ -488,14 +533,16 @@ data:
     # Choices: hostnetwork nat
     #ingress_mode = hostnetwork
 
-    # Log level for the kubernetes adaptor
+    # Log level for the kubernetes adaptor. Ignored if debug is True
     # Choices: NOTSET DEBUG INFO WARNING ERROR CRITICAL
     #loglevel = <None>
 
-    # The default HTTP ingress port
+    # The default HTTP ingress port for non-NSX ingress controllers in NAT
+    # mode.
     #http_ingress_port = 80
 
-    # The default HTTPS ingress port
+    # The default HTTPS ingress port for non-NSX ingress controllers in NAT
+    # mode.
     #https_ingress_port = 443
 
 
@@ -610,3 +657,15 @@ data:
     # The time in seconds for nsx_node_agent to call OVS command. Please
     # increase the time if OVS is in heavy load to create/delete ports
     #ovs_operation_timeout = 5
+
+    # Set to true to allow the CNI plugin to enable IPv6 container interfaces
+    #enable_ipv6 = False
+
+    # Set to True if DHCP is configured on the "ovs_uplink_port". "auto" will
+    # try to automatically  infer it but it only works on CoreOS. On other
+    # types host OS, it defaults to False
+    # Choices: True False auto
+    #is_dhcp_configured_on_ovs_uplink_port = auto
+
+    # The MTU value for nsx-cni
+    #mtu = 1500
