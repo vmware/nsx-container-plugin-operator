@@ -12,6 +12,24 @@ spec:
     metadata:
       labels: {component: nsx-ncp, tier: nsx-networking, version: v1}
     spec:
+      # podAntiAffinity could ensure that NCP replicas are not be co-located
+      # on a single node
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: component
+                  operator: In
+                  values:
+                  - nsx-ncp
+                - key: tier
+                  operator: In
+                  values:
+                  - nsx-networking
+              topologyKey: "kubernetes.io/hostname"
       containers:
       - env:
         - name: NCP_NAME
