@@ -16,6 +16,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	nsxt "github.com/vmware/go-vmware-nsxt"
+	"github.com/vmware/go-vmware-nsxt/common"
+	nsxtmgr "github.com/vmware/go-vmware-nsxt/manager"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
@@ -24,8 +26,6 @@ import (
 	vspherelog "github.com/vmware/vsphere-automation-sdk-go/runtime/log"
 	policyclient "github.com/vmware/vsphere-automation-sdk-go/runtime/protocol/client"
 	"github.com/vmware/vsphere-automation-sdk-go/runtime/security"
-	infra_segment "github.com/vmware/vsphere-automation-sdk-go/services/nsxt/infra/segments"
-	tier1_segment "github.com/vmware/vsphere-automation-sdk-go/services/nsxt/infra/tier_1s/segments"
 	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/model"
 	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/search"
 	"gopkg.in/ini.v1"
@@ -130,6 +130,93 @@ func getVcNameByProviderId(nsxClients *NsxClients, nodeName string, providerId s
 		}
 	}
 	return "", errors.Errorf("No virtual machine matches provider ID %s and hostname %s", providerId, nodeName)
+}
+
+func getNodeExternalIdByProviderId(nsxClients *NsxClients, nodeName string, providerId string) (string, error) {
+	// providerId has the following format: vsphere://<uuid>
+	if len(providerId) != 46 {
+		return "", errors.Errorf("Invalid provider ID %s of node %s", providerId, nodeName)
+	}
+	providerId = string([]byte(providerId)[10:])
+	nsxClient := nsxClients.ManagerClient
+	vms, _, err := nsxClient.FabricApi.ListVirtualMachines(nsxClient.Context, nil)
+	if err != nil {
+		return "", err
+	}
+	for _, vm := range vms.Results {
+		for _, computeId := range vm.ComputeIds {
+			// format of computeId: biosUuid:<uuid>
+			if providerId == string([]byte(computeId)[9:]) {
+				return vm.ExternalId, nil
+			}
+		}
+	}
+	return "", errors.Errorf("No virtual machine matches provider ID %s and hostname %s", providerId, nodeName)
+}
+
+func listAttachmentsByNodeExternalId(nsxClients *NsxClients, vmExternalId string) ([]string, error) {
+	var attachment_ids []string
+	localVarOptionals := make(map[string]interface{})
+	localVarOptionals["ownerVmId"] = vmExternalId
+	nsxClient := nsxClients.ManagerClient
+	vifs, _, err := nsxClient.FabricApi.ListVifs(nsxClient.Context, localVarOptionals)
+	if err != nil {
+		return nil, err
+	}
+	if len(vifs.Results) == 0 {
+		return nil, errors.Errorf("VIF for VM %s not found", vmExternalId)
+	}
+	for _, vif := range vifs.Results {
+		if vif.LportAttachmentId != "" {
+			attachment_ids = append(attachment_ids, vif.LportAttachmentId)
+		}
+	}
+	if len(attachment_ids) == 0 {
+		return nil, errors.Errorf("VIF attachment for VM %s not found", vmExternalId)
+	}
+	return attachment_ids, nil
+}
+
+func listPortsByAttachmentIds(nsxClients *NsxClients, attachmentIds []string) (*[]nsxtmgr.LogicalPort, error) {
+	var portList []nsxtmgr.LogicalPort
+	localVarOptionals := make(map[string]interface{})
+	for _, attachmentId := range attachmentIds {
+		localVarOptionals["attachmentId"] = attachmentId
+		nsxClient := nsxClients.ManagerClient
+		log.Info(fmt.Sprintf("Searching logical port for vif attachment %s", attachmentId))
+		lsps, _, err := nsxClient.LogicalSwitchingApi.ListLogicalPorts(nsxClient.Context, localVarOptionals)
+		if err != nil {
+			return nil, err
+		}
+		for _, lsp := range lsps.Results {
+			portList = append(portList, lsp)
+		}
+	}
+	if len(portList) == 0 {
+		return nil, errors.Errorf("LSP for attachments %v not found", attachmentIds)
+	}
+	return &portList, nil
+}
+
+
+func filterPortByNodeAddress(nsxClients *NsxClients, ports *[]nsxtmgr.LogicalPort, nodeAddress string) (*nsxtmgr.LogicalPort, error) {
+	log.Info(fmt.Sprintf("Found %d ports for node %s, checking addresses", len(*ports), nodeAddress))
+	nsxClient := nsxClients.ManagerClient
+	for _, port := range(*ports) {
+		logicalPort, _, err := nsxClient.LogicalSwitchingApi.GetLogicalPortState(nsxClient.Context, port.Id)
+		if err != nil {
+			return nil, err
+		}
+		if len(logicalPort.RealizedBindings) == 0 {
+			continue
+		}
+		address := logicalPort.RealizedBindings[0].Binding.IpAddress
+		if address == nodeAddress {
+			return &port, nil
+		}
+	}
+	return nil, errors.Errorf("No port matches address %s", nodeAddress)
+
 }
 
 func searchNodePortByVcNameAddress(nsxClients *NsxClients, nodeName string, nodeAddress string) (*model.SegmentPort, error) {
@@ -437,62 +524,56 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 
 	cluster := nsxClients.Cluster
 	providerId := instance.Spec.ProviderID
-	nodeVcName, err := getVcNameByProviderId(nsxClients, nodeName, providerId)
+	nodeExternalId, err := getNodeExternalIdByProviderId(nsxClients, nodeName, providerId)
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Address: nodeAddress,
 			Success: false,
-			Reason:  fmt.Sprintf("Error while achieving vsphere name for node %s: %v", nodeName, err),
+			Reason:  fmt.Sprintf("Error while achieving external id for node %s: %v", nodeName, err),
 		}
 		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
 	}
-	segmentPort, err := searchNodePortByVcNameAddress(nsxClients, nodeVcName, nodeAddress)
+	attachment_ids, err := listAttachmentsByNodeExternalId(nsxClients, nodeExternalId)
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Address: nodeAddress,
 			Success: false,
-			Reason:  fmt.Sprintf("Error while searching segment port for node %s: %v", nodeName, err),
+			Reason:  fmt.Sprintf("Error while achieving attachment ids for node %s: %v", nodeName, err),
 		}
 		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
 	}
-	reqLogger.Info("Got the segment port", "segmentPort.Id", *segmentPort.Id, "segmentPort.Path", *segmentPort.Path, "cluster", cluster)
-
-	// TODO: find a way to fill the segmentPort by using the return value from searchNodePortByVcNameAddress then we won't need to invoke the Get API again.
-	sl := strings.Split(*segmentPort.Path, "/")
-	segmentId := sl[len(sl)-1]
-	// the tier1 segment has path: /infra/tier-1s/<tier-1-id>/segments/<segment-id>
-	// the infra segment has path: /infra/segments/<segment-id>
-	var infraPortsClient *infra_segment.DefaultPortsClient
-	var tier1PortsClient *tier1_segment.DefaultPortsClient
-	tier1Id := ""
-	if sl[2] == "tier-1s" {
-		tier1Id = sl[3]
-		tier1PortsClient = tier1_segment.NewDefaultPortsClient(nsxClients.PolicyConnector)
-		*segmentPort, err = tier1PortsClient.Get(tier1Id, segmentId, *segmentPort.Id)
-	} else {
-		infraPortsClient = infra_segment.NewDefaultPortsClient(nsxClients.PolicyConnector)
-		*segmentPort, err = infraPortsClient.Get(segmentId, *segmentPort.Id)
-	}
+	portList, err := listPortsByAttachmentIds(nsxClients, attachment_ids)
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Address: nodeAddress,
 			Success: false,
-			Reason:  fmt.Sprintf("Failed to get segment port for node %s: %v", nodeName, err),
+			Reason:  fmt.Sprintf("Error while achieving ports for node %s: %v", nodeName, err),
 		}
 		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
 	}
+	lsp, err := filterPortByNodeAddress(nsxClients, portList, nodeAddress)
+	if err != nil {
+		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
+			Address: nodeAddress,
+			Success: false,
+			Reason:  fmt.Sprintf("Error while achieving port with specific address for node %s: %v", nodeName, err),
+		}
+		r.status.SetFromNodes(cachedNodeSet)
+		return reconcile.Result{}, err
+	}
+	reqLogger.Info("Got the port", "port.Id", lsp.Id, "cluster", cluster)
 
 	foundNodeTag := false
 	foundClusterTag := false
 	nodeNameScope := "ncp/node_name"
 	clusterScope := "ncp/cluster"
-	for _, tag := range segmentPort.Tags {
-		if *tag.Scope == nodeNameScope && *tag.Tag == nodeName {
+	for _, tag := range(lsp.Tags) {
+		if tag.Scope == nodeNameScope && tag.Tag == request.Name {
 			foundNodeTag = true
-		} else if *tag.Scope == clusterScope && *tag.Tag == cluster {
+		} else if tag.Scope == clusterScope && tag.Tag == cluster {
 			foundClusterTag = true
 		}
 	}
@@ -506,25 +587,26 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
 	}
-	reqLogger.Info("Updating node tag for segment port", "segmentPort.Id", segmentPort.Id)
+	reqLogger.Info("Updating node tag for port", "port.Id", lsp.Id)
 	if foundNodeTag == false {
-		var nodeTag = model.Tag{Scope: &nodeNameScope, Tag: &nodeName}
-		segmentPort.Tags = append(segmentPort.Tags, nodeTag)
+		var nodeTag = common.Tag{Scope: nodeNameScope, Tag: request.Name}
+		lsp.Tags = append(lsp.Tags, nodeTag)
 	}
 	if foundClusterTag == false {
-		var clusterTag = model.Tag{Scope: &clusterScope, Tag: &cluster}
-		segmentPort.Tags = append(segmentPort.Tags, clusterTag)
+		var clusterTag = common.Tag{Scope: clusterScope, Tag: cluster}
+		lsp.Tags = append(lsp.Tags, clusterTag)
 	}
-	if len(tier1Id) > 0 {
-		_, err = tier1PortsClient.Update(tier1Id, segmentId, *segmentPort.Id, *segmentPort)
-	} else {
-		_, err = infraPortsClient.Update(segmentId, *segmentPort.Id, *segmentPort)
-	}
+	nsxClient := nsxClients.ManagerClient
+	// Remove lsp.Attachment.Context to avoid updating the context, otherwise NSX-T will throw an error:
+	// "the required property attachment.context.vif_type is missing"
+	lsp.Attachment.Context = nil
+	_, _, err = nsxClient.LogicalSwitchingApi.UpdateLogicalPort(nsxClient.Context, lsp.Id, *lsp)
+
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Address: nodeAddress,
 			Success: false,
-			Reason:  fmt.Sprintf("Failed to update segment port %s for node %s: %v", *segmentPort.Path, nodeName, err),
+			Reason:  fmt.Sprintf("Failed to update port %s for node %s: %v", lsp.Id, nodeName, err),
 		}
 		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
@@ -535,6 +617,6 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 		Reason:  "",
 	}
 	r.status.SetFromNodes(cachedNodeSet)
-	reqLogger.Info("Successfully updated tags on segment port", "segmentPort.Id", segmentPort.Id)
+	reqLogger.Info("Successfully updated tags on port", "port.Id", lsp.Id)
 	return reconcile.Result{}, nil
 }
