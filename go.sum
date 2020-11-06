@@ -828,6 +828,8 @@ github.com/vishvananda/netlink v1.0.0/go.mod h1:+SR5DhBJrl6ZM7CoCKvpw5BKroDKQ+PJ
 github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df/go.mod h1:JP3t17pCcGlemwknint6hfoeCVQrEMVwxRLRjXpq+BU=
 github.com/vmware/go-vmware-nsxt v0.0.0-20200529214410-b51c930ccbfb h1:X83QJXv602z53r0IPwbuZ+YzenyVwm5XGViLJnmU5r4=
 github.com/vmware/go-vmware-nsxt v0.0.0-20200529214410-b51c930ccbfb/go.mod h1:VEqcmf4Sp7gPB7z05QGyKVmn6xWppr7Nz8cVNvyC80o=
+github.com/vmware/go-vmware-nsxt v0.0.0-20201110195518-0d17c798219b h1:BNOXM12mMbmXblf8YtP6zeuaw7avNs4mMyqnidLXPDQ=
+github.com/vmware/go-vmware-nsxt v0.0.0-20201110195518-0d17c798219b/go.mod h1:VEqcmf4Sp7gPB7z05QGyKVmn6xWppr7Nz8cVNvyC80o=
 github.com/vmware/vsphere-automation-sdk-go v0.0.0-20200424170832-cfbc53488368 h1:rX5ptH8MfmGknkygPTvRrELfzh7uo0FXavsB0NEBEWw=
 github.com/vmware/vsphere-automation-sdk-go/lib v0.2.0 h1:noiASkafwxvCmmCtZK0f1pt06R8c+Fkt9TcZW7xpYy0=
 github.com/vmware/vsphere-automation-sdk-go/lib v0.2.0/go.mod h1://FsAiCrr+T/Eq2Uxtq8UPVPbZWV7iLIvvXK17rsIxE=
