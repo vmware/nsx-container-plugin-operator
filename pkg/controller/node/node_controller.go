@@ -597,9 +597,6 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 		lsp.Tags = append(lsp.Tags, clusterTag)
 	}
 	nsxClient := nsxClients.ManagerClient
-	// Remove lsp.Attachment.Context to avoid updating the context, otherwise NSX-T will throw an error:
-	// "the required property attachment.context.vif_type is missing"
-	lsp.Attachment.Context = nil
 	_, _, err = nsxClient.LogicalSwitchingApi.UpdateLogicalPort(nsxClient.Context, lsp.Id, *lsp)
 
 	if err != nil {
