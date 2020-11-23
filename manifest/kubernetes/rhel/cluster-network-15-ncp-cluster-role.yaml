@@ -1,0 +1,8 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: ncp-cluster-role}
+rules:
+- apiGroups: ['', extensions, networking.k8s.io]
+  resources: [deployments, endpoints, pods/log, nodes, replicationcontrollers, secrets,
+    ingressclasses]
+  verbs: [get, watch, list]

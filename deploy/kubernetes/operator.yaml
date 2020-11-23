@@ -20,10 +20,15 @@ spec:
         key: node-role.kubernetes.io/master
       - effect: NoSchedule
         key: node.kubernetes.io/not-ready
+      volumes:
+      - hostPath: {path: /etc/os-release}
+        name: host-os-release
       containers:
         - name: nsx-ncp-operator
           image: vmware/nsx-container-plugin-operator
           command: ["/bin/bash", "-c", "nsx-ncp-operator --zap-time-encoding=iso8601"]
+          volumeMounts:
+          - {mountPath: /host/etc/os-release, name: host-os-release}
           imagePullPolicy: Always
           env:
             - name: POD_NAME

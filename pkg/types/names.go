@@ -32,4 +32,5 @@ const (
 	NsxKeyTempPath              string = "/tmp/nsx.key"
 	NsxCATempPath               string = "/tmp/nsx.ca"
 	NsxNodeAgentContainerName   string = "nsx-node-agent"
+	OsReleaseFile               string = "/host/etc/os-release"
 )

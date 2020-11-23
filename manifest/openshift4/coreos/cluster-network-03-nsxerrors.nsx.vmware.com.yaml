@@ -1,0 +1,28 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: nsxerrors.nsx.vmware.com}
+spec:
+  group: nsx.vmware.com
+  names:
+    kind: NSXError
+    plural: nsxerrors
+    shortNames: [ne]
+    singular: nsxerror
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - {description: NSX error messages. Messages are sorted by timestamp on which
+        the error occurs., jsonPath: .spec.message, name: Messages, type: string}
+    - {description: The identifier of the k8s object which has the errors., jsonPath: .spec.error-object-id,
+      name: ErrorObjectID, type: string}
+    - {description: The type of the k8s object which has the errors., jsonPath: .spec.error-object-type,
+      name: ErrorObjectType, type: string}
+    - {description: The name of the k8s object which has the errors., jsonPath: .spec.error-object-name,
+      name: ErrorObjectName, type: string}
+    - {description: The namespace of the k8s object if it is namespaced. None by default,
+      jsonPath: .spec.error-object-ns, name: ErrorObjectNamespace, type: string}
+    name: v1
+    schema:
+      openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}
+    served: true
+    storage: true

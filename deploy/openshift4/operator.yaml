@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nsx-ncp-operator
+  namespace: nsx-system-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: nsx-ncp-operator
+  template:
+    metadata:
+      labels:
+        name: nsx-ncp-operator
+    spec:
+      hostNetwork: true
+      serviceAccountName: nsx-ncp-operator
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+      - effect: NoSchedule
+        key: node.kubernetes.io/not-ready
+      volumes:
+      - hostPath: {path: /etc/os-release}
+        name: host-os-release
+      containers:
+        - name: nsx-ncp-operator
+          image: vmware/nsx-container-plugin-operator
+          command: ["/bin/bash", "-c", "nsx-ncp-operator --zap-time-encoding=iso8601"]
+          volumeMounts:
+          - {mountPath: /host/etc/os-release, name: host-os-release}
+          imagePullPolicy: Always
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OPERATOR_NAME
+              value: "nsx-ncp-operator"
+            - name: NCP_IMAGE
+              value: "nsx-ncp:latest"
+            - name: WATCH_NAMESPACE
+              value: "nsx-system-operator"

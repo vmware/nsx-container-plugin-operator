@@ -18,6 +18,8 @@ type NcpInstallSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	// +optional
 	NcpReplicas int32 `json:"ncpReplicas,omitempty"`
+	// For tagging node logical switch ports with node name and cluster
+	AddNodeTag bool `json:"addNodeTag,omitempty"`
 }
 
 // NcpInstallStatus defines the observed state of NcpInstall

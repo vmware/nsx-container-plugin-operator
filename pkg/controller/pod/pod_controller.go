@@ -97,13 +97,20 @@ func newReconciler(mgr manager.Manager, status *statusmanager.StatusManager, sha
 	nsxNcpResources := mergeAndGetNsxNcpResources(
 		nsxNcpDs, nsxNcpDeployments)
 
-	return &ReconcilePod{
+	reconcilePod := ReconcilePod{
 		client:          mgr.GetClient(),
 		scheme:          mgr.GetScheme(),
 		status:          status,
 		nsxNcpResources: nsxNcpResources,
 		sharedInfo:      sharedInfo,
 	}
+
+	if sharedInfo.AdaptorName == "openshift4" {
+		reconcilePod.Adaptor = &PodOc{}
+	} else {
+		reconcilePod.Adaptor = &PodK8s{}
+	}
+	return &reconcilePod
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -136,6 +143,21 @@ type ReconcilePod struct {
 	sharedInfo *sharedinfo.SharedInfo
 
 	nsxNcpResources []types.NamespacedName
+	Adaptor
+}
+
+type Adaptor interface {
+	setControllerReference(r *ReconcilePod, obj *unstructured.Unstructured) error
+}
+
+type Pod struct {}
+
+type PodK8s struct {
+	Pod
+}
+
+type PodOc struct {
+	Pod
 }
 
 func (r *ReconcilePod) isForNsxNcpResource(request reconcile.Request) bool {
@@ -157,7 +179,8 @@ func (r *ReconcilePod) Reconcile(request reconcile.Request) (reconcile.Result, e
 	}
 
 	reqLogger.Info("Reconciling pod update")
-	r.status.SetFromPods()
+	r.status.SetFromPodsForOverall()
+	r.status.SetNodeConditionFromPods()
 
 	if err := r.recreateNsxNcpResourceIfDeleted(request.Name); err != nil {
 		return reconcile.Result{Requeue: true}, err
@@ -197,6 +220,11 @@ func (r *ReconcilePod) recreateNsxNcpResourceIfDeleted(resName string) error {
 	k8sObj := r.identifyAndGetK8SObjToCreate(resName)
 	if k8sObj == nil {
 		log.Info(fmt.Sprintf("%s spec not set. Waiting for config_map controller to set it", resName))
+	}
+	if err = r.setControllerReference(r, k8sObj); err != nil {
+		log.Info(fmt.Sprintf(
+			"Failed to set controller reference for K8s resource: %s", instanceDetails.Name))
+		return err
 	}
 	if err = r.createK8sObject(k8sObj); err != nil {
 		log.Info(fmt.Sprintf(
@@ -239,7 +267,11 @@ func (r *ReconcilePod) checkIfK8sResourceExists(
 	return true, nil
 }
 
-func (r *ReconcilePod) createK8sObject(obj *unstructured.Unstructured) error {
+func (adaptor *PodK8s) setControllerReference(r *ReconcilePod, obj *unstructured.Unstructured) error {
+	return nil
+}
+
+func (adaptor *PodOc) setControllerReference(r *ReconcilePod, obj *unstructured.Unstructured) error {
 	if r.sharedInfo.NetworkConfig == nil {
 		return errors.New("NetworkConfig empty. Waiting for config_map controller to set it")
 	}
@@ -252,8 +284,11 @@ func (r *ReconcilePod) createK8sObject(obj *unstructured.Unstructured) error {
 			fmt.Sprintf("Failed to apply objects: %v", err))
 		return err
 	}
+	return nil
+}
 
-	if err = ApplyObject(context.TODO(), r.client, obj); err != nil {
+func (r *ReconcilePod) createK8sObject(obj *unstructured.Unstructured) error {
+	if err := ApplyObject(context.TODO(), r.client, obj); err != nil {
 		log.Error(
 			err, fmt.Sprintf("could not apply (%s) %s/%s",
 				obj.GroupVersionKind(), obj.GetNamespace(), obj.GetName()))
@@ -291,6 +326,7 @@ func identifyPodsInCLBDueToInvalidResolvConf(c client.Client) (
 	err := c.List(context.TODO(), podList, &client.ListOptions{
 		LabelSelector: nodeAgentLabelSelector})
 	if err != nil {
+		log.Error(err, "Error while getting the post list for node-agent")
 		return nil, err
 	}
 	for _, pod := range podList.Items {
@@ -330,10 +366,12 @@ var getContainerLogsInPod = func(pod *corev1.Pod, containerName string) (
 	string, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
+		log.Error(err, "Failed to invoke rest.InClusterConfig")
 		return "", err
 	}
 	clientSet, err := kubernetes.NewForConfig(config)
 	if err != nil {
+		log.Error(err, "Failed to invoke kubernetes.NewForConfig")
 		return "", err
 	}
 	logLinesRetrieved := int64(50)
@@ -344,12 +382,14 @@ var getContainerLogsInPod = func(pod *corev1.Pod, containerName string) (
 	podLogs, err := clientSet.CoreV1().Pods(pod.Namespace).GetLogs(
 		pod.Name, podLogOptions).Stream()
 	if err != nil {
+		log.Error(err, "Failed to invoke GetLogs")
 		return "", err
 	}
 	defer podLogs.Close()
 	buf := new(bytes.Buffer)
 	_, err = io.Copy(buf, podLogs)
 	if err != nil {
+		log.Error(err, "Failed to copy podLogs")
 		return "", err
 	}
 	return buf.String(), nil

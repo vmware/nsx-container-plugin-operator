@@ -5,8 +5,10 @@ package configmap
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"reflect"
@@ -20,14 +22,53 @@ import (
 	"github.com/pkg/errors"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-const (
-	manifestDir string = "./manifest"
-)
+type Adaptor interface {
+	FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error
+	validateConfigMap(configmap *corev1.ConfigMap) []error
+	validateClusterNetwork(spec *configv1.NetworkSpec) []error
+	HasNetworkConfigChange(currConfig *configv1.Network, prevConfig *configv1.Network) bool
+	setControllerReference(r *ReconcileConfigMap, networkConfig *configv1.Network, obj metav1.Object) error
+	getNetworkConfig(r *ReconcileConfigMap) (*configv1.Network, error)
+}
 
-func FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error {
+type ConfigMap struct {}
+
+type ConfigMapK8s struct {
+	ConfigMap
+}
+
+type ConfigMapOc struct {
+	ConfigMap
+}
+
+func (adaptor *ConfigMapK8s) FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error {
+	errs := []error{}
+	data := &configmap.Data
+	cfg, err := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+	if err != nil {
+		log.Error(err, "failed to load ConfigMap")
+		return err
+	}
+	appendErrorIfNotNil(&errs, fillDefault(cfg, "coe", "enable_snat", "True", false))
+	appendErrorIfNotNil(&errs, fillDefault(cfg, "ha", "enable", "True", false))
+	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_node_agent", "mtu", strconv.Itoa(operatortypes.DefaultMTU), false))
+	// Write config back to ConfigMap data
+	(*data)[operatortypes.ConfigMapDataKey], err = iniWriteToString(cfg)
+	appendErrorIfNotNil(&errs, err)
+
+	if len(errs) > 0 {
+		return errors.Errorf("failed to fill defaults: %q", errs)
+	}
+	return nil
+}
+
+func (adaptor *ConfigMapOc) FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error {
 	errs := []error{}
 	data := &configmap.Data
 	cfg, err := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
@@ -56,6 +97,143 @@ func FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error
 		return errors.Errorf("failed to fill defaults: %q", errs)
 	}
 	return nil
+}
+
+func (adaptor *ConfigMapK8s) validateConfigMap(configmap *corev1.ConfigMap) []error {
+	errs := []error{}
+	data := configmap.Data
+	cfg, err := ini.Load([]byte(data[operatortypes.ConfigMapDataKey]))
+	if err != nil {
+		errs = append(errs, errors.Wrapf(err, "failed to load ConfigMap"))
+		return errs
+	}
+	appendErrorIfNotNil(&errs, validateConfig(cfg, "coe", "adaptor"))
+	appendErrorIfNotNil(&errs, validateConfig(cfg, "coe", "cluster"))
+	appendErrorIfNotNil(&errs, validateConfig(cfg, "nsx_v3", "nsx_api_managers"))
+	if cfg.Section("coe").Key("enable_snat").Value() == "True" {
+		appendErrorIfNotNil(&errs, validateConfig(cfg, "nsx_v3", "external_ip_pools"))
+	}
+	appendErrorIfNotNil(&errs, validateConfig(cfg, "nsx_v3", "container_ip_blocks"))
+	// Either T0 gateway or top tier router should be set
+	if validateConfig(cfg, "nsx_v3", "tier0_gateway") != nil &&
+		validateConfig(cfg, "nsx_v3", "top_tier_router") != nil {
+		appendErrorIfNotNil(&errs, errors.Errorf("failed to get tier0_gateway or top_tier_router"))
+	}
+	// Check MTU value
+	mtu := cfg.Section("nsx_node_agent").Key("mtu").Value()
+	_, err = strconv.Atoi(mtu)
+	if err != nil {
+		appendErrorIfNotNil(&errs, errors.Wrapf(err, "mtu is invalid"))
+	}
+
+	return errs
+}
+
+func (adaptor *ConfigMapOc) validateConfigMap(configmap *corev1.ConfigMap) []error {
+	// TODO: merge validateConfigMap because most logic are the same
+	errs := []error{}
+	data := configmap.Data
+	cfg, err := ini.Load([]byte(data[operatortypes.ConfigMapDataKey]))
+	if err != nil {
+		errs = append(errs, errors.Wrapf(err, "failed to load ConfigMap"))
+		return errs
+	}
+	appendErrorIfNotNil(&errs, validateConfig(cfg, "coe", "cluster"))
+	appendErrorIfNotNil(&errs, validateConfig(cfg, "nsx_v3", "nsx_api_managers"))
+	if cfg.Section("coe").Key("enable_snat").Value() == "True" {
+		appendErrorIfNotNil(&errs, validateConfig(cfg, "nsx_v3", "external_ip_pools"))
+	}
+	// Either T0 gateway or top tier router should be set
+	if validateConfig(cfg, "nsx_v3", "tier0_gateway") != nil &&
+		validateConfig(cfg, "nsx_v3", "top_tier_router") != nil {
+		appendErrorIfNotNil(&errs, errors.Errorf("failed to get tier0_gateway or top_tier_router"))
+	}
+	// Check MTU value
+	mtu := cfg.Section("nsx_node_agent").Key("mtu").Value()
+	_, err = strconv.Atoi(mtu)
+	if err != nil {
+		appendErrorIfNotNil(&errs, errors.Wrapf(err, "mtu is invalid"))
+	}
+
+	return errs
+}
+
+func (adaptor *ConfigMapK8s) validateClusterNetwork(spec *configv1.NetworkSpec) []error {
+	return []error{}
+}
+
+func (adaptor *ConfigMapOc) validateClusterNetwork(spec *configv1.NetworkSpec) []error {
+	errs := []error{}
+	if strings.ToLower(spec.NetworkType) != operatortypes.NetworkType {
+		appendErrorIfNotNil(&errs, errors.Errorf("network type %s is not %s", spec.NetworkType, operatortypes.NetworkType))
+		return errs
+	}
+	if len(spec.ClusterNetwork) == 0 {
+		appendErrorIfNotNil(&errs, errors.Errorf("cluster network cannot be empty"))
+		return errs
+	}
+	for idx, pool := range spec.ClusterNetwork {
+		_, _, err := net.ParseCIDR(pool.CIDR)
+		if err != nil {
+			appendErrorIfNotNil(&errs, errors.Wrapf(err, "cluster network %d CIDR %q is invalid", idx, pool.CIDR))
+			continue
+		}
+		cidrPrefix, err := getPrefixFromCIDR(pool.CIDR)
+		if err != nil {
+			appendErrorIfNotNil(&errs, errors.Wrapf(err, "unable to infer CIDR prefix in CIDR: %q", pool.CIDR))
+			continue
+		}
+
+		if cidrPrefix > 30 {
+			appendErrorIfNotNil(&errs, errors.Errorf("invalid CIDR prefix length for CIDR %q. it must be larger than 30", pool.CIDR))
+		}
+
+		if pool.HostPrefix < cidrPrefix {
+			appendErrorIfNotNil(&errs, errors.Errorf("invalid CIDR HostPrefix: %d for CIDR %q. It must be smaller than or equal to the CIDR Prefix", pool.HostPrefix, pool.CIDR))
+		}
+	}
+	return errs
+}
+
+func (adaptor *ConfigMapK8s) HasNetworkConfigChange(currConfig *configv1.Network, prevConfig *configv1.Network) bool {
+	return false
+}
+
+func (adaptor *ConfigMapOc) HasNetworkConfigChange(currConfig *configv1.Network, prevConfig *configv1.Network) bool {
+	// only detect changes in spec.ClusterNetwork and spec.ServiceNetwork
+	if !stringSliceEqual(currConfig.Spec.ServiceNetwork, prevConfig.Spec.ServiceNetwork) {
+		// no point to check CIDRs as well
+		return true
+	}
+	currCidrs := []string{}
+	for _, cnet := range currConfig.Spec.ClusterNetwork {
+		currCidrs = append(currCidrs, cnet.CIDR)
+	}
+	prevCidrs := []string{}
+	for _, cnet := range prevConfig.Spec.ClusterNetwork {
+		prevCidrs = append(prevCidrs, cnet.CIDR)
+	}
+	return stringSliceEqual(currCidrs, prevCidrs)
+}
+
+func (adaptor *ConfigMapK8s) setControllerReference(r *ReconcileConfigMap, networkConfig *configv1.Network, obj metav1.Object) error {
+	// Skip setControllerReference for native Kubernetes configmap controller
+	return nil
+}
+
+func (adaptor *ConfigMapOc) setControllerReference(r *ReconcileConfigMap, networkConfig *configv1.Network, obj metav1.Object) error {
+	err := controllerutil.SetControllerReference(networkConfig, obj, r.scheme)
+	return err
+}
+
+func (adaptor *ConfigMapK8s) getNetworkConfig(r *ReconcileConfigMap) (*configv1.Network, error) {
+	return &configv1.Network{}, nil
+}
+
+func (adaptor *ConfigMapOc) getNetworkConfig(r *ReconcileConfigMap) (*configv1.Network, error) {
+	networkConfig := &configv1.Network{}
+	err := r.client.Get(context.TODO(), types.NamespacedName{Name: operatortypes.NetworkCRDName}, networkConfig)
+	return networkConfig, err
 }
 
 func appendErrorIfNotNil(errs *[]error, err error) {
@@ -89,18 +267,6 @@ func fillClusterNetwork(spec *configv1.NetworkSpec, cfg *ini.File) error {
 	return fillDefault(cfg, "nsx_v3", "container_ip_blocks", strings.Join(ipBlocks[:], ","), true)
 }
 
-func Validate(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error {
-	errs := []error{}
-
-	errs = append(errs, validateConfigMap(configmap)...)
-	errs = append(errs, validateClusterNetwork(spec)...)
-
-	if len(errs) > 0 {
-		return errors.Errorf("invalid configuration: %q", errs)
-	}
-	return nil
-}
-
 func validateConfig(cfg *ini.File, sec string, key string) error {
 	_, err := cfg.GetSection(sec)
 	if err != nil {
@@ -112,34 +278,6 @@ func validateConfig(cfg *ini.File, sec string, key string) error {
 	return nil
 }
 
-func validateConfigMap(configmap *corev1.ConfigMap) []error {
-	errs := []error{}
-	data := configmap.Data
-	cfg, err := ini.Load([]byte(data[operatortypes.ConfigMapDataKey]))
-	if err != nil {
-		errs = append(errs, errors.Wrapf(err, "failed to load ConfigMap"))
-		return errs
-	}
-	appendErrorIfNotNil(&errs, validateConfig(cfg, "coe", "cluster"))
-	appendErrorIfNotNil(&errs, validateConfig(cfg, "nsx_v3", "nsx_api_managers"))
-	if cfg.Section("coe").Key("enable_snat").Value() == "True" {
-		appendErrorIfNotNil(&errs, validateConfig(cfg, "nsx_v3", "external_ip_pools"))
-	}
-	// Either T0 gateway or top tier router should be set
-	if validateConfig(cfg, "nsx_v3", "tier0_gateway") != nil &&
-		validateConfig(cfg, "nsx_v3", "top_tier_router") != nil {
-		appendErrorIfNotNil(&errs, errors.Errorf("failed to get tier0_gateway or top_tier_router"))
-	}
-	// Check MTU value
-	mtu := cfg.Section("nsx_node_agent").Key("mtu").Value()
-	_, err = strconv.Atoi(mtu)
-	if err != nil {
-		appendErrorIfNotNil(&errs, errors.Wrapf(err, "mtu is invalid"))
-	}
-
-	return errs
-}
-
 func getPrefixFromCIDR(cidr string) (uint32, error) {
 	cidrPrefix := cidr[strings.LastIndex(cidr, "/")+1:]
 	i, err := strconv.ParseUint(cidrPrefix, 10, 32)
@@ -147,39 +285,6 @@ func getPrefixFromCIDR(cidr string) (uint32, error) {
 		return 0, err
 	}
 	return uint32(i), nil
-}
-
-func validateClusterNetwork(spec *configv1.NetworkSpec) []error {
-	errs := []error{}
-	if strings.ToLower(spec.NetworkType) != operatortypes.NetworkType {
-		appendErrorIfNotNil(&errs, errors.Errorf("network type %s is not %s", spec.NetworkType, operatortypes.NetworkType))
-		return errs
-	}
-	if len(spec.ClusterNetwork) == 0 {
-		appendErrorIfNotNil(&errs, errors.Errorf("cluster network cannot be empty"))
-		return errs
-	}
-	for idx, pool := range spec.ClusterNetwork {
-		_, _, err := net.ParseCIDR(pool.CIDR)
-		if err != nil {
-			appendErrorIfNotNil(&errs, errors.Wrapf(err, "cluster network %d CIDR %q is invalid", idx, pool.CIDR))
-			continue
-		}
-		cidrPrefix, err := getPrefixFromCIDR(pool.CIDR)
-		if err != nil {
-			appendErrorIfNotNil(&errs, errors.Wrapf(err, "unable to infer CIDR prefix in CIDR: %q", pool.CIDR))
-			continue
-		}
-
-		if cidrPrefix > 30 {
-			appendErrorIfNotNil(&errs, errors.Errorf("invalid CIDR prefix length for CIDR %q. it must be larger than 30", pool.CIDR))
-		}
-
-		if pool.HostPrefix < cidrPrefix {
-			appendErrorIfNotNil(&errs, errors.Errorf("invalid CIDR HostPrefix: %d for CIDR %q. It must be smaller than or equal to the CIDR Prefix", pool.HostPrefix, pool.CIDR))
-		}
-	}
-	return errs
 }
 
 func Render(configmap *corev1.ConfigMap, ncpReplicas int32, nsxSecret *corev1.Secret,
@@ -246,7 +351,11 @@ func Render(configmap *corev1.ConfigMap, ncpReplicas int32, nsxSecret *corev1.Se
 		renderData.Data[operatortypes.NsxKeyRenderKey] = ""
 		renderData.Data[operatortypes.NsxCARenderKey] = ""
 	}
-
+	manifestDir, err := GetManifestDir()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get manifestDir")
+	}
+	log.Info(fmt.Sprintf("Got the manifest dir: %s", manifestDir))
 	manifests, err := render.RenderDir(manifestDir, &renderData)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to render manifests")
@@ -256,21 +365,23 @@ func Render(configmap *corev1.ConfigMap, ncpReplicas int32, nsxSecret *corev1.Se
 	return objs, nil
 }
 
-func HasNetworkConfigChange(currConfig *configv1.Network, prevConfig *configv1.Network) bool {
-	// only detect changes in spec.ClusterNetwork and spec.ServiceNetwork
-	if !stringSliceEqual(currConfig.Spec.ServiceNetwork, prevConfig.Spec.ServiceNetwork) {
-		// no point to check CIDRs as well
-		return true
+func GetManifestDir() (string, error) {
+	release, err := os.Open(operatortypes.OsReleaseFile)
+	if err != nil {
+		return "", err
 	}
-	currCidrs := []string{}
-	for _, cnet := range currConfig.Spec.ClusterNetwork {
-		currCidrs = append(currCidrs, cnet.CIDR)
+	defer release.Close()
+	content, err := ioutil.ReadAll(release)
+	osRelease := string(content)
+	if strings.Contains(osRelease, "CoreOS") {
+		// TODO: add platform detection logic if we allow the user deploy coreos image on native k8s
+		return "./manifest/openshift4/coreos", nil
+	} else if strings.Contains(osRelease, "Ubuntu") {
+		return "./manifest/kubernetes/ubuntu", nil
+	} else if strings.Contains(osRelease, "CentOS") {
+		return "./manifest/kubernetes/rhel", nil
 	}
-	prevCidrs := []string{}
-	for _, cnet := range prevConfig.Spec.ClusterNetwork {
-		prevCidrs = append(prevCidrs, cnet.CIDR)
-	}
-	return stringSliceEqual(currCidrs, prevCidrs)
+	return "", errors.Wrap(err, "failed to get os-release")
 }
 
 type podNeedChange struct {

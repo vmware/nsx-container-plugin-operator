@@ -11,10 +11,14 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/pkg/errors"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
+
 	"gopkg.in/ini.v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/kubectl/pkg/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 func init() {
@@ -40,13 +44,38 @@ func createMockNetworkSpec(cidrs []string) *configv1.NetworkSpec {
 	return mockSpec
 }
 
+func getTestReconcileConfigMap(t string) *ReconcileConfigMap {
+	client := fake.NewFakeClient()
+	namespace := "operator-namespace"
+	mapper := &statusmanager.FakeRESTMapper{}
+	sharedInfo := &sharedinfo.SharedInfo{
+		AdaptorName: t,
+	}
+	status := statusmanager.New(
+		client, mapper, "testing", "1.2.3", namespace, sharedInfo)
+	sharedInfo.NetworkConfig = &configv1.Network{}
+	reconcileConfigMap := ReconcileConfigMap{
+		client:     client,
+		status:     status,
+		sharedInfo: sharedInfo,
+	}
+	if t == "openshift4" {
+		reconcileConfigMap.Adaptor = &ConfigMapOc{}
+	} else {
+		reconcileConfigMap.Adaptor = &ConfigMapK8s{}
+	}
+	return &reconcileConfigMap
+}
+
 func TestFillDefaults(t *testing.T) {
 	cidrs := []string{"10.0.0.0/24"}
 	mockConfigMap := createMockConfigMap()
 	mockNetworkSpec := createMockNetworkSpec(cidrs)
 	data := &mockConfigMap.Data
 
-	err := FillDefaults(mockConfigMap, mockNetworkSpec)
+	r := getTestReconcileConfigMap("openshift4")
+
+	err := r.FillDefaults(mockConfigMap, mockNetworkSpec)
 	if err != nil {
 		t.Fatalf("failed to fill default config")
 	}
@@ -101,7 +130,8 @@ func TestFillClusterNetwork(t *testing.T) {
 func TestValidate(t *testing.T) {
 	mockConfigMap := &corev1.ConfigMap{}
 	mockNetworkSpec := &configv1.NetworkSpec{}
-	err := Validate(mockConfigMap, mockNetworkSpec)
+	r := getTestReconcileConfigMap("openshift4")
+	err := r.Validate(mockConfigMap, mockNetworkSpec)
 	assert.NotNil(t, err)
 }
 
@@ -123,7 +153,8 @@ func TestValidateConfig(t *testing.T) {
 func TestValidateConfigMap(t *testing.T) {
 	mockConfigMap := createMockConfigMap()
 
-	errs := validateConfigMap(mockConfigMap)
+	r := getTestReconcileConfigMap("openshift4")
+	errs := r.validateConfigMap(mockConfigMap)
 	assert.Equal(t, 4, len(errs))
 
 	data := &mockConfigMap.Data
@@ -135,41 +166,42 @@ func TestValidateConfigMap(t *testing.T) {
 	cfg.Section("nsx_node_agent").NewKey("mtu", "1500")
 	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
 
-	errs = validateConfigMap(mockConfigMap)
+	errs = r.validateConfigMap(mockConfigMap)
 	assert.Empty(t, errs)
 }
 
 func TestValidateClusterNetwork(t *testing.T) {
 	mockNetworkSpec := &configv1.NetworkSpec{}
-	errs := validateClusterNetwork(mockNetworkSpec)
+	r := getTestReconcileConfigMap("openshift4")
+	errs := r.validateClusterNetwork(mockNetworkSpec)
 	assert.Equal(t, 1, len(errs))
 
 	mockNetworkSpec.NetworkType = "ncp"
-	errs = validateClusterNetwork(mockNetworkSpec)
+	errs = r.validateClusterNetwork(mockNetworkSpec)
 	assert.Equal(t, 1, len(errs))
 
 	mockNetworkSpec.ClusterNetwork = []configv1.ClusterNetworkEntry{
 		configv1.ClusterNetworkEntry{CIDR: "mockCIDR"}}
-	errs = validateClusterNetwork(mockNetworkSpec)
+	errs = r.validateClusterNetwork(mockNetworkSpec)
 	assert.Equal(t, 1, len(errs))
 
 	mockNetworkSpec.ClusterNetwork = []configv1.ClusterNetworkEntry{
 		configv1.ClusterNetworkEntry{CIDR: "10.0.0.0/31"}}
-	errs = validateClusterNetwork(mockNetworkSpec)
+	errs = r.validateClusterNetwork(mockNetworkSpec)
 	assert.Equal(t, 2, len(errs))
 
 	mockNetworkSpec.ClusterNetwork = []configv1.ClusterNetworkEntry{
 		configv1.ClusterNetworkEntry{
 			CIDR:       "10.0.0.0/16",
 			HostPrefix: uint32(12)}}
-	errs = validateClusterNetwork(mockNetworkSpec)
+	errs = r.validateClusterNetwork(mockNetworkSpec)
 	assert.Equal(t, 1, len(errs))
 
 	mockNetworkSpec.ClusterNetwork = []configv1.ClusterNetworkEntry{
 		configv1.ClusterNetworkEntry{
 			CIDR:       "10.0.0.0/16",
 			HostPrefix: uint32(24)}}
-	errs = validateClusterNetwork(mockNetworkSpec)
+	errs = r.validateClusterNetwork(mockNetworkSpec)
 	assert.Empty(t, errs)
 }
 

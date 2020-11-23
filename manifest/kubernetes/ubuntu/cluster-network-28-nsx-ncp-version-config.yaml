@@ -1,0 +1,7 @@
+apiVersion: v1
+data: {version: 3.1.0}
+kind: ConfigMap
+metadata:
+  labels: {version: v1}
+  name: nsx-ncp-version-config
+  namespace: nsx-system

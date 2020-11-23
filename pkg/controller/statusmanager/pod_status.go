@@ -17,7 +17,9 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 
+	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -61,9 +63,126 @@ type deploymentState struct {
 	LastChangeTime time.Time
 }
 
-// SetFromPods sets the operator Degraded/Progressing/Available status, based on
+func FindStatusCondition(conditions []corev1.NodeCondition, conditionType corev1.NodeConditionType) *corev1.NodeCondition {
+	for i := range conditions {
+		if conditions[i].Type == conditionType {
+			return &conditions[i]
+		}
+	}
+	return nil
+}
+
+func SetNodeCondition(conditions *[]corev1.NodeCondition, newCondition corev1.NodeCondition) {
+	if conditions == nil {
+		conditions = &[]corev1.NodeCondition{}
+	}
+	existingCondition := FindStatusCondition(*conditions, newCondition.Type)
+	if existingCondition == nil {
+		newCondition.LastTransitionTime = metav1.NewTime(time.Now())
+		*conditions = append(*conditions, newCondition)
+		return
+	}
+
+	if existingCondition.Status != newCondition.Status {
+		existingCondition.Status = newCondition.Status
+		existingCondition.LastTransitionTime = metav1.NewTime(time.Now())
+	}
+
+	existingCondition.Reason = newCondition.Reason
+	existingCondition.Message = newCondition.Message
+}
+
+func (status *StatusManager) setNodeNetworkUnavailable(nodeName string, ready bool, reason string, message string) {
+	if ready == true {
+		log.Info(fmt.Sprintf("Setting status NetworkUnavailable to false for node %s", nodeName))
+	} else {
+		log.Info(fmt.Sprintf("Setting status NetworkUnavailable to true for node %s", nodeName))
+	}
+	node := &corev1.Node{}
+	err := status.client.Get(context.TODO(), types.NamespacedName{Name: nodeName}, node)
+	if err != nil {
+		log.Error(err, fmt.Sprintf("Failed to get node %s", nodeName))
+		return
+	}
+	networkUnavailableCondition := corev1.ConditionFalse
+	if ready == false {
+		networkUnavailableCondition = corev1.ConditionTrue
+		reason += "NotReady"
+	} else {
+		reason += "Ready"
+		message = "NSX node agent is running"
+	}
+	condition := corev1.NodeCondition{
+		Type:               "NetworkUnavailable",
+		Status:             networkUnavailableCondition,
+		LastHeartbeatTime:  metav1.Now(),
+		LastTransitionTime: metav1.Now(),
+		Reason:             reason,
+		Message:            message,
+	}
+	SetNodeCondition(&node.Status.Conditions, condition)
+	err = status.client.Status().Update(context.TODO(), node)
+	if err != nil {
+		log.Error(err, "Failed to update node condition")
+	} else {
+		log.Info("Updated node condition")
+	}
+}
+
+// Get the pod status from API server
+func (status *StatusManager) SetNodeConditionFromPods() {
+	status.Lock()
+	defer status.Unlock()
+
+	pods := &corev1.PodList{}
+	err := status.client.List(context.TODO(), pods, client.MatchingLabels{"component": operatortypes.NsxNodeAgentContainerName})
+	if err != nil {
+		log.Error(err, fmt.Sprintf("Error getting %s for node condition", operatortypes.NsxNodeAgentContainerName))
+	} else if len(pods.Items) == 0 {
+		log.Info("nsx-node-agent not found for node condition")
+		nodes := corev1.NodeList{}
+		err = status.client.List(context.TODO(), &nodes)
+		if err != nil {
+			log.Error(err, "Failed to get nodes for condition updating")
+			return
+		}
+		for _, node := range nodes.Items {
+			status.setNodeNetworkUnavailable(node.ObjectMeta.Name, false, "NSXNodeAgent", "Waiting for nsx-node-agent to be created")
+		}
+		return
+	}
+	pod := corev1.Pod{}
+	for _, pod = range pods.Items {
+		containerStatus := corev1.ContainerStatus{}
+		ready := true
+		messages := ""
+		nodeName := pod.Spec.NodeName
+		for _, containerStatus = range pod.Status.ContainerStatuses {
+			if containerStatus.State.Running == nil {
+				ready = false
+				if containerStatus.State.Waiting != nil {
+					if containerStatus.State.Waiting.Message == "" {
+						messages = messages + fmt.Sprintf("nsx-node-agent/%s not running: %s. ", containerStatus.Name, containerStatus.State.Waiting.Reason)
+					} else {
+						messages = messages + fmt.Sprintf("nsx-node-agent/%s not running: %s. ", containerStatus.Name, containerStatus.State.Waiting.Message)
+					}
+				} else if containerStatus.State.Terminated != nil {
+					if containerStatus.State.Terminated.Message == "" {
+						messages = messages + fmt.Sprintf("nsx-node-agent/%s not running: %s. ", containerStatus.Name, containerStatus.State.Terminated.Reason)
+					} else {
+						messages = messages + fmt.Sprintf("nsx-node-agent/%s not running: %s. ", containerStatus.Name, containerStatus.State.Terminated.Message)
+					}
+				}
+
+			}
+		}
+		status.setNodeNetworkUnavailable(nodeName, ready, "NSXNodeAgent", messages)
+	}
+}
+
+// SetFromPodsForOverall sets the operator Degraded/Progressing/Available status, based on
 // the current status of the manager's DaemonSets and Deployments.
-func (status *StatusManager) SetFromPods() {
+func (status *StatusManager) SetFromPodsForOverall() {
 	status.Lock()
 	defer status.Unlock()
 
@@ -71,7 +190,7 @@ func (status *StatusManager) SetFromPods() {
 	progressing := []string{}
 	hung := []string{}
 
-	daemonsetStates, deploymentStates := status.getLastPodState()
+	daemonsetStates, deploymentStates := status.getLastPodState(status)
 
 	for _, dsName := range status.daemonSets {
 		ds := &appsv1.DaemonSet{}
@@ -159,38 +278,12 @@ func (status *StatusManager) SetFromPods() {
 	}
 
 	status.setNotDegraded(PodDeployment)
-	if err := status.setLastPodState(daemonsetStates, deploymentStates); err != nil {
+	if err := status.setLastPodState(status, daemonsetStates, deploymentStates); err != nil {
 		log.Error(err, "Failed to set pod state (continuing)")
 	}
 
-	conditions := make([]configv1.ClusterOperatorStatusCondition, 0, 2)
-	if len(progressing) > 0 {
-		conditions = append(conditions,
-			configv1.ClusterOperatorStatusCondition{
-				Type:    configv1.OperatorProgressing,
-				Status:  configv1.ConditionTrue,
-				Reason:  "Deploying",
-				Message: strings.Join(progressing, "\n"),
-			},
-		)
-	} else {
-		conditions = append(conditions,
-			configv1.ClusterOperatorStatusCondition{
-				Type:   configv1.OperatorProgressing,
-				Status: configv1.ConditionFalse,
-			},
-		)
-	}
-	if reachedAvailableLevel {
-		conditions = append(conditions,
-			configv1.ClusterOperatorStatusCondition{
-				Type:   configv1.OperatorAvailable,
-				Status: configv1.ConditionTrue,
-			},
-		)
-	}
+	status.setConditions(progressing, reachedAvailableLevel)
 
-	status.set(reachedAvailableLevel, conditions...)
 	if len(hung) > 0 {
 		status.setDegraded(RolloutHung, "RolloutHung", strings.Join(hung, "\n"))
 	} else {
@@ -201,7 +294,7 @@ func (status *StatusManager) SetFromPods() {
 // getLastPodState reads the last-seen daemonset + deployment state
 // from the clusteroperator annotation and parses it. On error, it returns
 // an empty state, since this should not block updating operator status.
-func (status *StatusManager) getLastPodState() (map[types.NamespacedName]daemonsetState, map[types.NamespacedName]deploymentState) {
+func (adaptor *StatusOc) getLastPodState(status *StatusManager) (map[types.NamespacedName]daemonsetState, map[types.NamespacedName]deploymentState) {
 	// with maps allocated
 	daemonsetStates := map[types.NamespacedName]daemonsetState{}
 	deploymentStates := map[types.NamespacedName]deploymentState{}
@@ -210,7 +303,7 @@ func (status *StatusManager) getLastPodState() (map[types.NamespacedName]daemons
 	co := &configv1.ClusterOperator{ObjectMeta: metav1.ObjectMeta{Name: status.name}}
 	err := status.client.Get(context.TODO(), types.NamespacedName{Name: status.name}, co)
 	if err != nil {
-		log.Error(err, "Failed to get ClusterOperator")
+		log.Error(err, "Failed to get last-seen snapshot")
 		return daemonsetStates, deploymentStates
 	}
 
@@ -238,7 +331,15 @@ func (status *StatusManager) getLastPodState() (map[types.NamespacedName]daemons
 	return daemonsetStates, deploymentStates
 }
 
-func (status *StatusManager) setLastPodState(
+func (adaptor *StatusK8s) getLastPodState(status *StatusManager) (map[types.NamespacedName]daemonsetState, map[types.NamespacedName]deploymentState) {
+	// with maps allocated
+	daemonsetStates := map[types.NamespacedName]daemonsetState{}
+	deploymentStates := map[types.NamespacedName]deploymentState{}
+	return daemonsetStates, deploymentStates
+}
+
+func (adaptor *StatusOc) setLastPodState(
+	status *StatusManager,
 	dss map[types.NamespacedName]daemonsetState,
 	deps map[types.NamespacedName]deploymentState) error {
 
@@ -277,4 +378,8 @@ func (status *StatusManager) setLastPodState(
 		newStatus.Annotations[lastSeenAnnotation] = string(lsbytes)
 		return status.client.Patch(context.TODO(), newStatus, client.MergeFrom(oldStatus))
 	})
+}
+
+func (adaptor *StatusK8s) setLastPodState(status *StatusManager, dss map[types.NamespacedName]daemonsetState, deps map[types.NamespacedName]deploymentState) error {
+	return nil
 }
