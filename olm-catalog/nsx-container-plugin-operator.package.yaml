@@ -1,5 +1,5 @@
 channels:
-- currentCSV: nsx-container-plugin-operator.v0.1.0
+- currentCSV: nsx-container-plugin-operator.v0.2.0
   name: alpha
 defaultChannel: alpha
 packageName: nsx-container-plugin-operator
