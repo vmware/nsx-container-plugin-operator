@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 
 	"github.com/ghodss/yaml"
@@ -16,6 +17,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
 	operatorv1 "github.com/vmware/nsx-container-plugin-operator/pkg/apis/operator/v1"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	"github.com/vmware/nsx-container-plugin-operator/version"
 
@@ -39,7 +41,13 @@ const (
 	maxStatusLevel
 )
 
-// StatusManager coordinates changes to ClusterOperator.Status
+type Adaptor interface {
+	getLastPodState(status *StatusManager) (map[types.NamespacedName]daemonsetState, map[types.NamespacedName]deploymentState)
+	setLastPodState(status *StatusManager, dss map[types.NamespacedName]daemonsetState, deps map[types.NamespacedName]deploymentState) error
+	set(status *StatusManager, reachedAvailableLevel bool, conditions ...configv1.ClusterOperatorStatusCondition)
+}
+
+// Status coordinates changes to ClusterOperator.Status
 type StatusManager struct {
 	sync.Mutex
 
@@ -54,14 +62,122 @@ type StatusManager struct {
 	deployments []types.NamespacedName
 
 	OperatorNamespace string
+	AdaptorName       string
+	Adaptor
 }
 
-func New(client client.Client, mapper meta.RESTMapper, name, version string, operatorNamespace string) *StatusManager {
-	return &StatusManager{client: client, mapper: mapper, name: name, version: version, OperatorNamespace: operatorNamespace}
+type Status struct {}
+
+type StatusK8s struct {
+	Status
+}
+
+type StatusOc struct {
+	Status
+}
+
+func (status *StatusManager) GetOperatorNamespace() string {
+	return status.OperatorNamespace
+}
+
+func (status *StatusManager) setConditions(progressing []string, reachedAvailableLevel bool) {
+	conditions := make([]configv1.ClusterOperatorStatusCondition, 0, 2)
+	if len(progressing) > 0 {
+		conditions = append(conditions,
+			configv1.ClusterOperatorStatusCondition{
+				Type:    configv1.OperatorProgressing,
+				Status:  configv1.ConditionTrue,
+				Reason:  "Deploying",
+				Message: strings.Join(progressing, "\n"),
+			},
+		)
+	} else {
+		conditions = append(conditions,
+			configv1.ClusterOperatorStatusCondition{
+				Type:   configv1.OperatorProgressing,
+				Status: configv1.ConditionFalse,
+			},
+		)
+	}
+	if reachedAvailableLevel {
+		conditions = append(conditions,
+			configv1.ClusterOperatorStatusCondition{
+				Type:   configv1.OperatorAvailable,
+				Status: configv1.ConditionTrue,
+			},
+		)
+	}
+
+	status.set(status, reachedAvailableLevel, conditions...)
+}
+
+func New(client client.Client, mapper meta.RESTMapper, name, version string, operatorNamespace string, sharedInfo *sharedinfo.SharedInfo) *StatusManager {
+	status := StatusManager{
+		client:            client,
+		mapper:            mapper,
+		name:              name,
+		version:           version,
+		OperatorNamespace: operatorNamespace,
+		AdaptorName:       sharedInfo.AdaptorName,
+	}
+	if sharedInfo.AdaptorName == "openshift4" {
+		status.Adaptor = &StatusOc{}
+	} else {
+		status.Adaptor = &StatusK8s{}
+	}
+	return &status
 }
 
 // Set updates the ClusterOperator.Status with the provided conditions
-func (status *StatusManager) set(reachedAvailableLevel bool, conditions ...configv1.ClusterOperatorStatusCondition) {
+func (adaptor *StatusK8s) set(status *StatusManager, reachedAvailableLevel bool, conditions ...configv1.ClusterOperatorStatusCondition) {
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		ncpInstall := &operatorv1.NcpInstall{}
+		err := status.client.Get(context.TODO(), types.NamespacedName{Name: operatortypes.NcpInstallCRDName, Namespace: operatortypes.OperatorNamespace}, ncpInstall)
+		if err != nil {
+			log.Error(err, "Failed to get ncpInstall")
+			return err
+		}
+		co := &configv1.ClusterOperator{ObjectMeta: metav1.ObjectMeta{Name: status.name}}
+
+		oldStatus := ncpInstall.Status.DeepCopy()
+
+		if reachedAvailableLevel {
+			co.Status.Versions = []configv1.OperandVersion{
+				{Name: "operator", Version: version.Version},
+			}
+		}
+		for _, condition := range conditions {
+			v1helpers.SetStatusCondition(&co.Status.Conditions, condition)
+		}
+
+		progressingCondition := v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorProgressing)
+		availableCondition := v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorAvailable)
+		if availableCondition == nil && progressingCondition != nil && progressingCondition.Status == configv1.ConditionTrue {
+			v1helpers.SetStatusCondition(&co.Status.Conditions,
+				configv1.ClusterOperatorStatusCondition{
+					Type:    configv1.OperatorAvailable,
+					Status:  configv1.ConditionFalse,
+					Reason:  "Startup",
+					Message: "The network is starting up",
+				},
+			)
+		}
+
+		if reflect.DeepEqual(*oldStatus, co.Status) {
+			return nil
+		}
+
+		// Set status to ncp-install CRD
+		status.setNcpInstallCrdStatus(status.OperatorNamespace, &co.Status.Conditions)
+		return nil
+	})
+	if err != nil {
+		log.Error(err, "Failed to set NcpInstall")
+	}
+}
+
+// Set updates the ClusterOperator.Status with the provided conditions
+func (adaptor *StatusOc) set(status *StatusManager, reachedAvailableLevel bool, conditions ...configv1.ClusterOperatorStatusCondition) {
 	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		co := &configv1.ClusterOperator{ObjectMeta: metav1.ObjectMeta{Name: status.name}}
 		err := status.client.Get(context.TODO(), types.NamespacedName{Name: status.name}, co)
@@ -133,11 +249,12 @@ func (status *StatusManager) set(reachedAvailableLevel bool, conditions ...confi
 func (status *StatusManager) syncDegraded() {
 	for _, c := range status.failing {
 		if c != nil {
-			status.set(false, *c)
+			status.set(status, false, *c)
 			return
 		}
 	}
 	status.set(
+		status,
 		false,
 		configv1.ClusterOperatorStatusCondition{
 			Type:   configv1.OperatorDegraded,
@@ -197,6 +314,7 @@ func (status *StatusManager) setNcpInstallCrdStatus(operatorNamespace string, co
 	}
 	for _, condition := range *conditions {
 		v1helpers.SetStatusCondition(&crd.Status.Conditions, condition)
+		log.Info(fmt.Sprintf("Trying to update ncp-install CRD with condition %v", condition))
 	}
 	err = status.client.Status().Update(context.TODO(), crd)
 	if err != nil {

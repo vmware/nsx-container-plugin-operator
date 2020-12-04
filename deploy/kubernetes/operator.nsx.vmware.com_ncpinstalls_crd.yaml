@@ -37,6 +37,9 @@ spec:
               type: integer
               format: int32
               minimum: 1
+            addNodeTag:
+              description: Tag node logical switch port with node name and cluster when set to true, skip tagging when set to false
+              type: boolean
         status:
           description: NcpInstallStatus defines the observed state of NcpInstall
           type: object

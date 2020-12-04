@@ -4,7 +4,7 @@ metadata:
   name: nsx-ncp-operator
 rules:
 - apiGroups: ['']
-  resources: [pods, configmaps, namespaces, serviceaccounts, secrets]
+  resources: [pods, configmaps, namespaces, serviceaccounts, secrets, nodes/status]
   verbs: [create, get, list, patch, delete, update, watch, deletecollection]
 - apiGroups: ['']
   resources: [nodes]

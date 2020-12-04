@@ -14,6 +14,7 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -70,10 +71,28 @@ func conditionsEqual(oldConditions, newConditions []configv1.ClusterOperatorStat
 	return conditionsInclude(oldConditions, newConditions) && conditionsInclude(newConditions, oldConditions)
 }
 
-func TestStatusManager_set(t *testing.T) {
+func getTestStatusOc() (*StatusManager, client.Client) {
+	status := getTestStatus("openshift4")
+	return status, status.client
+}
+
+func getTestStatusK8s() (*StatusManager, client.Client) {
+	status := getTestStatus("kubernetes")
+	return status, status.client
+}
+
+func getTestStatus(adaptorName string) *StatusManager {
 	client := fake.NewFakeClient()
 	mapper := &FakeRESTMapper{}
-	status := New(client, mapper, "testing", "1.2.3", "operator-namespace")
+	sharedInfo := &sharedinfo.SharedInfo{
+		AdaptorName: adaptorName,
+	}
+	status := New(client, mapper, "testing", "1.2.3", "operator-namespace", sharedInfo)
+	return status
+}
+
+func TestStatus_set(t *testing.T) {
+	status, client := getTestStatusOc()
 
 	co, err := getCO(client, "testing")
 	if !errors.IsNotFound(err) {
@@ -91,7 +110,7 @@ func TestStatusManager_set(t *testing.T) {
 		Reason:  "Reason",
 		Message: "Message",
 	}
-	status.set(false, condFail)
+	status.set(status, false, condFail)
 
 	co, err = getCO(client, "testing")
 	if err != nil {
@@ -106,7 +125,7 @@ func TestStatusManager_set(t *testing.T) {
 		Type:   configv1.OperatorProgressing,
 		Status: configv1.ConditionUnknown,
 	}
-	status.set(false, condProgress)
+	status.set(status, false, condProgress)
 
 	co, err = getCO(client, "testing")
 	if err != nil {
@@ -120,7 +139,7 @@ func TestStatusManager_set(t *testing.T) {
 		Type:   configv1.OperatorDegraded,
 		Status: configv1.ConditionFalse,
 	}
-	status.set(false, condNoFail)
+	status.set(status, false, condNoFail)
 
 	co, err = getCO(client, "testing")
 	if err != nil {
@@ -138,7 +157,7 @@ func TestStatusManager_set(t *testing.T) {
 		Type:   configv1.OperatorAvailable,
 		Status: configv1.ConditionTrue,
 	}
-	status.set(false, condNoProgress, condAvailable)
+	status.set(status, false, condNoProgress, condAvailable)
 
 	co, err = getCO(client, "testing")
 	if err != nil {
@@ -161,16 +180,14 @@ func TestStatusManager_set(t *testing.T) {
 	}
 	obj.SetGroupVersionKind(gvk)
 	obj.SetName("current")
-	err = status.client.Create(context.TODO(), obj)
+	err = client.Create(context.TODO(), obj)
 	if err != nil {
 		t.Fatalf("error creating not rendered object: %v", err)
 	}
 }
 
-func TestStatusManagerSetDegraded(t *testing.T) {
-	client := fake.NewFakeClient()
-	mapper := &FakeRESTMapper{}
-	status := New(client, mapper, "testing", "1.2.3", "operator-namespace")
+func TestStatusSetDegraded(t *testing.T) {
+	status, client := getTestStatusOc()
 
 	co, err := getCO(client, "testing")
 	if !errors.IsNotFound(err) {
@@ -258,17 +275,15 @@ func TestStatusManagerSetDegraded(t *testing.T) {
 	}
 }
 
-func TestStatusManagerSetFromDaemonSets(t *testing.T) {
-	client := fake.NewFakeClient()
-	mapper := &FakeRESTMapper{}
-	status := New(client, mapper, "testing", "1.2.3", "operator-namespace")
+func TestStatusSetFromDaemonSets(t *testing.T) {
+	status, client := getTestStatusOc()
 
 	status.SetDaemonSets([]types.NamespacedName{
 		{Namespace: "one", Name: "alpha"},
 		{Namespace: "two", Name: "beta"},
 	})
 
-	status.SetFromPods()
+	status.SetFromPodsForOverall()
 	co, err := getCO(client, "testing")
 	if err != nil {
 		t.Fatalf("error getting ClusterOperator: %v", err)
@@ -294,7 +309,7 @@ func TestStatusManagerSetFromDaemonSets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error creating DaemonSet: %v", err)
 	}
-	status.SetFromPods()
+	status.SetFromPodsForOverall()
 
 	// Since the DaemonSet.Status reports no pods Available, the status should be Progressing
 	co, err = getCO(client, "testing")
@@ -353,7 +368,7 @@ func TestStatusManagerSetFromDaemonSets(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error updating DaemonSet: %v", err)
 		}
-		status.SetFromPods()
+		status.SetFromPodsForOverall()
 
 		co, err = getCO(client, "testing")
 		if err != nil {
@@ -410,7 +425,7 @@ func TestStatusManagerSetFromDaemonSets(t *testing.T) {
 		t.Fatalf("error updating DaemonSet: %v", err)
 	}
 	time.Sleep(1 * time.Second) // minimum transition time fidelity
-	status.SetFromPods()
+	status.SetFromPodsForOverall()
 
 	co, err = getCO(client, "testing")
 	if err != nil {
@@ -454,7 +469,7 @@ func TestStatusManagerSetFromDaemonSets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error updating DaemonSet: %v", err)
 	}
-	status.SetFromPods()
+	status.SetFromPodsForOverall()
 
 	co, err = getCO(client, "testing")
 	if err != nil {
@@ -495,7 +510,7 @@ func TestStatusManagerSetFromDaemonSets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error updating DaemonSet: %v", err)
 	}
-	status.SetFromPods()
+	status.SetFromPodsForOverall()
 
 	co, err = getCO(client, "testing")
 	if err != nil {
@@ -535,7 +550,7 @@ func TestStatusManagerSetFromDaemonSets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error updating DaemonSet: %v", err)
 	}
-	status.SetFromPods()
+	status.SetFromPodsForOverall()
 
 	co, err = getCO(client, "testing")
 	if err != nil {
@@ -579,7 +594,7 @@ func TestStatusManagerSetFromDaemonSets(t *testing.T) {
 
 	t0 := time.Now()
 	time.Sleep(time.Second / 10)
-	status.SetFromPods()
+	status.SetFromPodsForOverall()
 
 	co, err = getCO(client, "testing")
 	if err != nil {
@@ -637,7 +652,7 @@ func TestStatusManagerSetFromDaemonSets(t *testing.T) {
 		}
 	}
 	setLastPodState(t, client, "testing", ps)
-	status.SetFromPods()
+	status.SetFromPodsForOverall()
 
 	co, err = getCO(client, "testing")
 	if err != nil {
@@ -678,7 +693,7 @@ func TestStatusManagerSetFromDaemonSets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error updating DaemonSet: %v", err)
 	}
-	status.SetFromPods()
+	status.SetFromPodsForOverall()
 
 	// see that the pod state is sensible
 	co, err = getCO(client, "testing")
@@ -707,16 +722,14 @@ func TestStatusManagerSetFromDaemonSets(t *testing.T) {
 	}
 }
 
-func TestStatusManagerSetFromDeployments(t *testing.T) {
-	client := fake.NewFakeClient()
-	mapper := &FakeRESTMapper{}
-	status := New(client, mapper, "testing", "1.2.3", "operator-namespace")
+func TestStatusSetFromDeployments(t *testing.T) {
+	status, client := getTestStatusOc()
 
 	status.SetDeployments([]types.NamespacedName{
 		{Namespace: "one", Name: "alpha"},
 	})
 
-	status.SetFromPods()
+	status.SetFromPodsForOverall()
 
 	co, err := getCO(client, "testing")
 	if err != nil {
@@ -743,7 +756,7 @@ func TestStatusManagerSetFromDeployments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error creating Deployment: %v", err)
 	}
-	status.SetFromPods()
+	status.SetFromPodsForOverall()
 
 	co, err = getCO(client, "testing")
 	if err != nil {
@@ -765,7 +778,7 @@ func TestStatusManagerSetFromDeployments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error creating Deployment: %v", err)
 	}
-	status.SetFromPods()
+	status.SetFromPodsForOverall()
 
 	co, err = getCO(client, "testing")
 	if err != nil {
@@ -801,7 +814,7 @@ func TestStatusManagerSetFromDeployments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error updating Deployment: %v", err)
 	}
-	status.SetFromPods()
+	status.SetFromPodsForOverall()
 
 	co, err = getCO(client, "testing")
 	if err != nil {
@@ -851,7 +864,7 @@ func TestStatusManagerSetFromDeployments(t *testing.T) {
 
 	t0 := time.Now()
 	time.Sleep(time.Second / 10)
-	status.SetFromPods()
+	status.SetFromPodsForOverall()
 
 	co, err = getCO(client, "testing")
 	if err != nil {
@@ -912,7 +925,7 @@ func TestStatusManagerSetFromDeployments(t *testing.T) {
 		}
 	}
 	setLastPodState(t, client, "testing", ps)
-	status.SetFromPods()
+	status.SetFromPodsForOverall()
 
 	co, err = getCO(client, "testing")
 	if err != nil {
@@ -948,7 +961,7 @@ func TestStatusManagerSetFromDeployments(t *testing.T) {
 		t.Fatalf("error updating Deployment: %v", err)
 	}
 
-	status.SetFromPods()
+	status.SetFromPodsForOverall()
 
 	co, err = getCO(client, "testing")
 	if err != nil {

@@ -18,6 +18,7 @@ import (
 	nsxt "github.com/vmware/go-vmware-nsxt"
 	"github.com/vmware/go-vmware-nsxt/common"
 	nsxtmgr "github.com/vmware/go-vmware-nsxt/manager"
+
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
@@ -67,6 +68,11 @@ func newReconciler(mgr manager.Manager, status *statusmanager.StatusManager, sha
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
 func add(mgr manager.Manager, r reconcile.Reconciler) error {
+	if r.(*ReconcileNode).sharedInfo.AddNodeTag == false {
+		log.Info("Tagging node logical switch ports was disabled")
+		return nil
+	}
+
 	// Create a new controller
 	c, err := controller.New("node-controller", mgr, controller.Options{Reconciler: r})
 	if err != nil {
@@ -109,28 +115,6 @@ type NsxClients struct {
 }
 
 var cachedNodeSet = map[string](*statusmanager.NodeStatus){}
-
-func getVcNameByProviderId(nsxClients *NsxClients, nodeName string, providerId string) (string, error) {
-	// providerId has the following format: vsphere://<uuid>
-	if len(providerId) != 46 {
-		return "", errors.Errorf("Invalid provider ID %s of node %s", providerId, nodeName)
-	}
-	providerId = string([]byte(providerId)[10:])
-	nsxClient := nsxClients.ManagerClient
-	vms, _, err := nsxClient.FabricApi.ListVirtualMachines(nsxClient.Context, nil)
-	if err != nil {
-		return "", err
-	}
-	for _, vm := range vms.Results {
-		for _, computeId := range vm.ComputeIds {
-			// format of computeId: biosUuid:<uuid>
-			if providerId == string([]byte(computeId)[9:]) {
-				return vm.DisplayName, nil
-			}
-		}
-	}
-	return "", errors.Errorf("No virtual machine matches provider ID %s and hostname %s", providerId, nodeName)
-}
 
 func getNodeExternalIdByProviderId(nsxClients *NsxClients, nodeName string, providerId string) (string, error) {
 	// providerId has the following format: vsphere://<uuid>
@@ -198,11 +182,10 @@ func listPortsByAttachmentIds(nsxClients *NsxClients, attachmentIds []string) (*
 	return &portList, nil
 }
 
-
 func filterPortByNodeAddress(nsxClients *NsxClients, ports *[]nsxtmgr.LogicalPort, nodeAddress string) (*nsxtmgr.LogicalPort, error) {
 	log.Info(fmt.Sprintf("Found %d ports for node %s, checking addresses", len(*ports), nodeAddress))
 	nsxClient := nsxClients.ManagerClient
-	for _, port := range(*ports) {
+	for _, port := range *ports {
 		logicalPort, _, err := nsxClient.LogicalSwitchingApi.GetLogicalPortState(nsxClient.Context, port.Id)
 		if err != nil {
 			return nil, err
@@ -570,7 +553,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	foundClusterTag := false
 	nodeNameScope := "ncp/node_name"
 	clusterScope := "ncp/cluster"
-	for _, tag := range(lsp.Tags) {
+	for _, tag := range lsp.Tags {
 		if tag.Scope == nodeNameScope && tag.Tag == request.Name {
 			foundNodeTag = true
 		} else if tag.Scope == clusterScope && tag.Tag == cluster {

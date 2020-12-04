@@ -5,9 +5,9 @@
 ## Overview
 
 An operator for leveraging NSX as the default container networking solution for an
-Openshift cluster. The operator will be deployed in the early phases of cluster
-deployment, and it will take care of deploying NSX integration components, and
-precisely:
+Kubernetes/Openshift cluster. The operator will be deployed in the early phases of
+Openshift cluster deployment or after the kubectl is ready in Kubernetes cluster,
+and it will take care of deploying NSX integration components, and precisely:
 
 * The NSX container plugin (NCP) deployment
 * The nsx-ncp-bootstrap daemonset
@@ -26,6 +26,26 @@ corresponding NSX logical port is enabled as a container host logical port.
 
 ## Try it out
 
+### Build
+
+Building the nsx-container-plugin operator is very simple. From the project root
+directory simply type the following command.
+
+```
+make all
+```
+
+At the moment the nsx-container-plugin operator only works on native Kubernetes
+or Openshift 4 environments
+
+### Deploy
+
+#### Kubernetes
+
+Edit the operator yaml files in `deploy/kubernetes` then apply them.
+
+#### Openshift
+
 Generate install-config.yaml by using openshift-install command.
 ```
 $ openshift-install --dir=MY_CLUSTER create install-config
@@ -39,8 +59,9 @@ Create manifest files:
 ```
 $ openshift-install --dir=MY_CLUSTER create manifests
 ```
-Put operator yaml files from `deploy/` to `MY_CLUSTER/manifests`, edit configmap.yaml
-about operator configurations, add the operator image and NCP image in operator.yaml.
+Put operator yaml files from `deploy/openshift/` and `manifests/openshift/coreos`
+to `MY_CLUSTER/manifests`, edit configmap.yaml about operator configurations,
+add the operator image and NCP image in operator.yaml.
 
 Generate ignition configuration files:
 ```
@@ -49,23 +70,13 @@ $ openshift-install --dir=MY_CLUSTER create ignition-configs
 This bootstrap ignition file will be added to the terraform tfvars.
 Then use terraform to install Openshift 4 cluster on vSphere.
 
-### Build & Run
 
-Building the nsx-container-plugin operator is very simple. From the project root
-directory simply type the following command.
-
-```
-make all
-```
-
-At the moment the nsx-container-plugin operator only works on Openshift 4
-environments
 
 ## Documentation
 
-### Cluster network config
+### Cluster network config (Openshift specific)
 Cluster network config is initially set in install-config.yaml, user could apply
-`Network.config.openshift.io` CRD to update `clusterNetwork` in `manifests/cluster-network-02-config.yml`.
+`Network.config.openshift.io` CRD to update `clusterNetwork` in `manifests/openshift/cluster-network-02-config.yml`.
 *Example configurations*
 ```
 apiVersion: config.openshift.io/v1
@@ -79,22 +90,36 @@ spec:
 ```
 
 ### Operator ConfigMap
+
 Operator ConfigMap `nsx-ncp-operator-config` is used to provide NCP configurations.
 As for now we only support NSX Policy API, single Tier topology on Openshift 4,
-the operator sets `policy_nsxapi` as True, `single_tier_topology` as True.
-In the ConfigMap, some fields are mandatory including `cluster`, `nsx_api_managers`,
+single or two Tiers topology on native Kubernetes.
+
+#### Kubernetes
+
+Some fields are mandatory including `adaptor`, `cluster`, `nsx_api_managers`,
+`container_ip_blocks`, `tier0_gateway`(for single T1 case), `top_tier_router`
+(for single T0 case), `external_ip_pools`(for SNAT mode).. If any of above
+options is not provided in the operator ConfigMap, the operator will fail to
+reconcile configurations, error message swill be added in ncpinstall nsx-ncp
+Degraded conditions
+
+#### OpenShift
+
+The operator sets `policy_nsxapi` as True, `single_tier_topology` as True.
+In the ConfigMap, some fields are mandatory including ``adaptor`, `cluster`, `nsx_api_managers`,
 `tier0_gateway`(for single T1 case), `top_tier_router`(for single T0 case),
 `external_ip_pools`(for SNAT mode). If any of above options is not provided in the
 operator ConfigMap, the operator will fail to reconcile configurations, error messages
 will be added in clusteroperator nsx-ncp Degraded conditions.
 
 ### NCP Image
-User needs to set NCP image as an environment parameter `NCP_IMAGE` in `deploy/operator.yaml`.
+User needs to set NCP image as an environment parameter `NCP_IMAGE` in `deploy/${platform}/operator.yaml`.
 
 ### Unsafe changes
-* If CIDRs in `clusterNetwork` are already applied, it is unsafe to remove them.
-NSX NCP operator won't fail when it detects some existing network CIDRs are deleted,
-but the removal may cause unexpected issues.
+* (Openshift specific) If CIDRs in `clusterNetwork` are already applied, it is
+unsafe to remove them. NSX NCP operator won't fail when it detects some existing
+network CIDRs are deleted, but the removal may cause unexpected issues.
 * NSX NCP operator uses tags to mark the container host logical ports, deleting these tags
 from NSX manager will cause network realization failure on corresponding nodes.
 

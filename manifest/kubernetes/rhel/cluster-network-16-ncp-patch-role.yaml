@@ -1,0 +1,19 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: ncp-patch-role}
+rules:
+- apiGroups: ['', extensions, networking.k8s.io]
+  resources: [namespaces, ingresses, services, pods, networkpolicies]
+  verbs: [get, watch, list, update, patch]
+- apiGroups: [nsx.vmware.com]
+  resources: [nsxerrors, nsxlocks, ncpconfigs]
+  verbs: [create, get, list, patch, delete, update]
+- apiGroups: ['', extensions, networking.k8s.io]
+  resources: [ingresses/status, services/status]
+  verbs: [replace, update, patch]
+- apiGroups: [vmware.com]
+  resources: [loadbalancers, loadbalancers/status, nsxlbmonitors, nsxlbmonitors/status]
+  verbs: [create, get, list, patch, delete, watch, update]
+- apiGroups: [k8s.cni.cncf.io]
+  resources: [network-attachment-definitions]
+  verbs: [get, list, watch]

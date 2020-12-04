@@ -27,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -42,22 +41,28 @@ var appliedConfigMap *corev1.ConfigMap
 // Add creates a new ConfigMap Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager, status *statusmanager.StatusManager, sharedInfo *sharedinfo.SharedInfo) error {
-	return add(mgr, newReconciler(mgr, status, sharedInfo))
+	return add(mgr, sharedInfo, newReconciler(mgr, status, sharedInfo))
 }
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager, status *statusmanager.StatusManager, sharedInfo *sharedinfo.SharedInfo) reconcile.Reconciler {
 	configv1.Install(mgr.GetScheme())
-	return &ReconcileConfigMap{
+	reconcileConfigMap := ReconcileConfigMap{
 		client:     mgr.GetClient(),
 		scheme:     mgr.GetScheme(),
 		status:     status,
 		sharedInfo: sharedInfo,
 	}
+	if sharedInfo.AdaptorName == "openshift4" {
+		reconcileConfigMap.Adaptor = &ConfigMapOc{}
+	} else {
+		reconcileConfigMap.Adaptor = &ConfigMapK8s{}
+	}
+	return &reconcileConfigMap
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
-func add(mgr manager.Manager, r reconcile.Reconciler) error {
+func add(mgr manager.Manager, sharedInfo *sharedinfo.SharedInfo, r reconcile.Reconciler) error {
 	// Create a new controller
 	c, err := controller.New("configmap-controller", mgr, controller.Options{Reconciler: r})
 	if err != nil {
@@ -75,10 +80,15 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	if err != nil {
 		return err
 	}
-	// Watch for changes to primary resource Network CRD
-	err = c.Watch(&source.Kind{Type: &configv1.Network{}}, &handler.EnqueueRequestForObject{})
-	if err != nil {
-		return err
+
+	if sharedInfo.AdaptorName == "openshift4" {
+		// Watch for changes to primary resource Network CRD
+		err = c.Watch(&source.Kind{Type: &configv1.Network{}}, &handler.EnqueueRequestForObject{})
+		if err != nil {
+			return err
+		}
+	} else {
+		log.Info("Skipping watching Network CRD for non-Openshift4")
 	}
 
 	// Watch for changes to primary resource Secret
@@ -101,6 +111,19 @@ type ReconcileConfigMap struct {
 	scheme     *runtime.Scheme
 	status     *statusmanager.StatusManager
 	sharedInfo *sharedinfo.SharedInfo
+	Adaptor
+}
+
+func (r *ReconcileConfigMap) Validate(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error {
+	errs := []error{}
+
+	errs = append(errs, r.validateConfigMap(configmap)...)
+	errs = append(errs, r.validateClusterNetwork(spec)...)
+
+	if len(errs) > 0 {
+		return errors.Errorf("invalid configuration: %q", errs)
+	}
+	return nil
 }
 
 // Reconcile reads that state of the cluster for a ConfigMap object and makes changes based on the state read
@@ -183,8 +206,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Get network CRD configuration
-	networkConfig := &configv1.Network{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: operatortypes.NetworkCRDName}, networkConfig)
+	networkConfig, err := r.getNetworkConfig(r)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -200,14 +222,14 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Fill default configurations
-	if err = FillDefaults(instance, &networkConfig.Spec); err != nil {
+	if err = r.FillDefaults(instance, &networkConfig.Spec); err != nil {
 		r.status.SetDegraded(statusmanager.OperatorConfig, "FillDefaultsError",
 			fmt.Sprintf("Failed to fill default configurations: %v", err))
 		return reconcile.Result{}, err
 	}
 
 	// Validate configurations
-	if err = Validate(instance, &networkConfig.Spec); err != nil {
+	if err = r.Validate(instance, &networkConfig.Spec); err != nil {
 		r.status.SetDegraded(statusmanager.OperatorConfig, "InvalidOperatorConfig",
 			fmt.Sprintf("The operator configuration is invalid: %v", err))
 		return reconcile.Result{}, err
@@ -281,7 +303,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	// Compare with previous configurations
 	networkConfigChanged := true
 	if r.sharedInfo.NetworkConfig != nil {
-		networkConfigChanged = HasNetworkConfigChange(networkConfig, r.sharedInfo.NetworkConfig)
+		networkConfigChanged = r.HasNetworkConfigChange(networkConfig, r.sharedInfo.NetworkConfig)
 		if !networkConfigChanged {
 			networkConfigChanged = IsMTUChanged(instance, appliedConfigMap)
 		}
@@ -327,7 +349,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	// Apply objects to K8s cluster
 	for _, obj := range objs {
 		// Mark the object to be GC'd if the owner is deleted
-		err = controllerutil.SetControllerReference(networkConfig, obj, r.scheme)
+		err = r.setControllerReference(r, networkConfig, obj)
 		if err != nil {
 			err = errors.Wrapf(err, "could not set reference for (%s) %s/%s", obj.GroupVersionKind(), obj.GetNamespace(), obj.GetName())
 			r.status.SetDegraded(statusmanager.OperatorConfig, "ApplyObjectsError",

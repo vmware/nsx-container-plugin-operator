@@ -1,0 +1,8 @@
+apiVersion: operator.nsx.vmware.com/v1
+kind: NcpInstall
+metadata:
+  name: ncp-install
+  namespace: nsx-system-operator
+spec:
+  ncpReplicas: 1
+  addNodeTag: true

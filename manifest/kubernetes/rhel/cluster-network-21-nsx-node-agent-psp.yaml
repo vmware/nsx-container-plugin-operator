@@ -1,0 +1,21 @@
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata: {name: nsx-node-agent-psp}
+spec:
+  allowedCapabilities: [SYS_ADMIN, NET_ADMIN, SYS_PTRACE, DAC_READ_SEARCH, SYS_NICE,
+    SYS_MODULE]
+  defaultAddCapabilities: null
+  fsGroup: {rule: RunAsAny}
+  hostIPC: false
+  hostNetwork: true
+  hostPID: true
+  privileged: true
+  readOnlyRootFilesystem: false
+  requiredDropCapabilities: [KILL]
+  runAsUser: {rule: RunAsAny}
+  seLinux:
+    rule: RunAsAny
+    seLinuxOptions: {level: 's0:c0.c1023', type: spc_t}
+  supplementalGroups: {rule: RunAsAny}
+  volumes: [configMap, downwardAPI, emptyDir, persistentVolumeClaim, projected, secret,
+    hostPath]

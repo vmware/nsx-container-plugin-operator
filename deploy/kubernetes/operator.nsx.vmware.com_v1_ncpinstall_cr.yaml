@@ -5,3 +5,4 @@ metadata:
   namespace: nsx-system-operator
 spec:
   ncpReplicas: 1
+  addNodeTag: false

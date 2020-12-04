@@ -76,24 +76,32 @@ func TestPodController_mergeAndGetNsxNcpResources(t *testing.T) {
 	}
 }
 
-func getTestReconcilePod() *ReconcilePod {
+func getTestReconcilePod(t string) *ReconcilePod {
 	client := fake.NewFakeClient()
 	mapper := &statusmanager.FakeRESTMapper{}
+	sharedInfo := &sharedinfo.SharedInfo{
+		AdaptorName: t,
+	}
 	status := statusmanager.New(
-		client, mapper, "testing", "1.2.3", "operator-namespace")
-	sharedInfo := sharedinfo.New()
+		client, mapper, "testing", "1.2.3", "operator-namespace", sharedInfo)
 	sharedInfo.NetworkConfig = &configv1.Network{}
 
 	nsxNcpResources := mergeAndGetNsxNcpResources(
 		getNsxNcpDs(getNsxSystemNsName()),
 		getNsxNcpDeployments(getNsxSystemNsName()))
 	// Create a ReconcilePod object with the scheme and fake client.
-	return &ReconcilePod{
+	reconcilePod := ReconcilePod{
 		client:          client,
 		status:          status,
 		nsxNcpResources: nsxNcpResources,
 		sharedInfo:      sharedInfo,
 	}
+	if t == "openshift4" {
+		reconcilePod.Adaptor = &PodOc{}
+	} else {
+		reconcilePod.Adaptor = &PodK8s{}
+	}
+	return &reconcilePod
 }
 
 func (r *ReconcilePod) testRequestContainsNsxNcpResource(t *testing.T) {
@@ -123,7 +131,7 @@ func (r *ReconcilePod) testRequestNotContainsNsxNcpResource(t *testing.T) {
 }
 
 func TestPodController_isForNsxNcpResource(t *testing.T) {
-	r := getTestReconcilePod()
+	r := getTestReconcilePod("openshift4")
 	r.testRequestContainsNsxNcpResource(t)
 	r.testRequestNotContainsNsxNcpResource(t)
 }
@@ -341,7 +349,7 @@ func (r *ReconcilePod) testReconcileOnCLBNsxNodeAgentInvalidResolvConf(
 }
 
 func TestPodControllerReconcile(t *testing.T) {
-	r := getTestReconcilePod()
+	r := getTestReconcilePod("openshift4")
 	r.testReconcileOnNotWatchedResource(t)
 	r.testReconcileOnWatchedResource(t)
 	r.testReconcileOnWatchedResourceWhenDeleted(t)
