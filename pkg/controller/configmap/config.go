@@ -569,6 +569,9 @@ func optionInConfigMap(configMap *corev1.ConfigMap, section string, key string) 
 }
 
 func getOptionInConfigMap(configMap *corev1.ConfigMap, section string, key string) string {
+	if configMap == nil {
+		return ""
+	}
 	cfg, err := ini.Load([]byte(configMap.Data[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		log.Error(err, "Failed to load ConfigMap")
