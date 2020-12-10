@@ -62,3 +62,14 @@ spec:
               items:
               - {key: version, path: VERSION}
               name: nsx-ncp-version-config
+          - secret:
+              items:
+              - {key: tls.crt, path: lb-cert/tls.crt}
+              - {key: tls.key, path: lb-cert/tls.key}
+              name: lb-secret
+          - secret:
+              items:
+              - {key: tls.crt, path: nsx-cert/tls.crt}
+              - {key: tls.key, path: nsx-cert/tls.key}
+              - {key: tls.ca, path: nsx-cert/tls.ca}
+              name: nsx-secret
