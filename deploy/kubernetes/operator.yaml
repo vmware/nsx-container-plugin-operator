@@ -29,7 +29,7 @@ spec:
           command: ["/bin/bash", "-c", "nsx-ncp-operator --zap-time-encoding=iso8601"]
           volumeMounts:
           - {mountPath: /host/etc/os-release, name: host-os-release}
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           env:
             - name: POD_NAME
               valueFrom:
