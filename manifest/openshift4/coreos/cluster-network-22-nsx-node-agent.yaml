@@ -38,6 +38,7 @@ spec:
         - {mountPath: /host/var/run/netns, mountPropagation: HostToContainer, name: netns}
         - {mountPath: /host/proc, name: proc, readOnly: true}
         - {mountPath: /var/lib/kubelet/device-plugins/, name: device-plugins, readOnly: true}
+        - {mountPath: /var/log/nsx-ujo, name: host-var-log-ujo}
       - command: [start_kube_proxy]
         env:
         - name: POD_NAME
@@ -60,6 +61,7 @@ spec:
         volumeMounts:
         - {mountPath: /etc/nsx-ujo, name: projected-volume, readOnly: true}
         - {mountPath: /var/run/openvswitch, name: openvswitch}
+        - {mountPath: /var/log/nsx-ujo, name: host-var-log-ujo}
       - command: [start_ovs]
         image: "{{.NcpImage}}"
         imagePullPolicy: IfNotPresent
@@ -86,6 +88,7 @@ spec:
         - {mountPath: /usr/lib64/libcrypto.so.1.1, name: host-libcrypto}
         - {mountPath: /var/run/dbus, name: dbus}
         - {mountPath: /host/etc/sysconfig/network-scripts, name: nscripts}
+        - {mountPath: /var/log/nsx-ujo, name: host-var-log-ujo}
       hostNetwork: true
       serviceAccountName: nsx-node-agent-svc-account
       terminationGracePeriodSeconds: 60
