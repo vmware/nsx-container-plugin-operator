@@ -36,6 +36,7 @@ spec:
         - {mountPath: /host/var/lib/dpkg, name: dpkg-lib}
         - {mountPath: /usr/share/doc, name: usr-share-doc}
         - {mountPath: /var/lib/snapd/apparmor/snap-confine, name: snap-confine}
+        - {mountPath: /var/log/nsx-ujo, name: ncp-logdir}
       serviceAccountName: nsx-node-agent-svc-account
       tolerations:
       - {effect: NoSchedule, key: node-role.kubernetes.io/master}
@@ -69,4 +70,6 @@ spec:
         name: usr-share-doc
       - hostPath: {path: /var/lib/snapd/apparmor/snap-confine}
         name: snap-confine
+      - hostPath: {path: /var/log/nsx-ujo}
+        name: ncp-logdir
   updateStrategy: {type: RollingUpdate}

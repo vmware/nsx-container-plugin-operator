@@ -50,7 +50,10 @@ spec:
       serviceAccountName: ncp-svc-account
       tolerations:
       - {effect: NoSchedule, key: node-role.kubernetes.io/master}
+      - {mountPath: /var/log/nsx-ujo, name: ncp-logdir}
       volumes:
+      - hostPath: {path: /var/log/nsx-ujo}
+        name: ncp-logdir
       - name: projected-volume
         projected:
           sources:

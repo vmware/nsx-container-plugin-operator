@@ -50,11 +50,14 @@ spec:
         name: nsx-ncp
         volumeMounts:
         - {mountPath: /etc/nsx-ujo, name: projected-volume, readOnly: true}
+        - {mountPath: /var/log/nsx-ujo, name: ncp-logdir}
       hostNetwork: true
       serviceAccountName: ncp-svc-account
       tolerations:
       - {effect: NoSchedule, key: node-role.kubernetes.io/master}
       volumes:
+      - hostPath: {path: /var/log/nsx-ujo}
+        name: ncp-logdir
       - name: projected-volume
         projected:
           sources:

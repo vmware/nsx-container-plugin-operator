@@ -39,6 +39,7 @@ spec:
         - {mountPath: /host/var/run/netns, mountPropagation: HostToContainer, name: netns}
         - {mountPath: /host/proc, name: proc, readOnly: true}
         - {mountPath: /var/lib/kubelet/device-plugins/, name: device-plugins, readOnly: true}
+        - {mountPath: /var/log/nsx-ujo, name: ncp-logdir}
       - command: [start_kube_proxy]
         env:
         - name: POD_NAME
@@ -61,6 +62,7 @@ spec:
         volumeMounts:
         - {mountPath: /etc/nsx-ujo, name: projected-volume, readOnly: true}
         - {mountPath: /var/run/openvswitch, name: openvswitch}
+        - {mountPath: /var/log/nsx-ujo, name: ncp-logdir}
       - command: [start_ovs]
         image: "{{.NcpImage}}"
         imagePullPolicy: IfNotPresent
@@ -83,6 +85,7 @@ spec:
         - {mountPath: /lib/modules, name: host-modules, readOnly: true}
         - {mountPath: /host/etc/os-release, name: host-os-release, readOnly: true}
         - {mountPath: /var/log/openvswitch, name: host-var-log-ujo, subPath: openvswitch}
+        - {mountPath: /var/log/nsx-ujo, name: ncp-logdir}
       hostNetwork: true
       serviceAccountName: nsx-node-agent-svc-account
       terminationGracePeriodSeconds: 60
@@ -122,4 +125,6 @@ spec:
         name: host-os-release
       - hostPath: {path: /var/log/nsx-ujo, type: DirectoryOrCreate}
         name: host-var-log-ujo
+      - hostPath: {path: /var/log/nsx-ujo}
+        name: ncp-logdir
   updateStrategy: {type: RollingUpdate}
