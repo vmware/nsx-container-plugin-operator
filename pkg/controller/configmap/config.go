@@ -287,7 +287,7 @@ func getPrefixFromCIDR(cidr string) (uint32, error) {
 	return uint32(i), nil
 }
 
-func Render(configmap *corev1.ConfigMap, ncpReplicas int32, nsxSecret *corev1.Secret,
+func Render(configmap *corev1.ConfigMap, ncpReplicas *int32, nsxSecret *corev1.Secret,
 	lbSecret *corev1.Secret) ([]*unstructured.Unstructured, error) {
 	log.Info("Starting render phase")
 	objs := []*unstructured.Unstructured{}
@@ -324,12 +324,13 @@ func Render(configmap *corev1.ConfigMap, ncpReplicas int32, nsxSecret *corev1.Se
 		}
 	}
 	if haEnabled {
-		renderData.Data[operatortypes.NcpReplicasKey] = ncpReplicas
+		renderData.Data[operatortypes.NcpReplicasKey] = *ncpReplicas
 	} else {
-		renderData.Data[operatortypes.NcpReplicasKey] = 1
-		if ncpReplicas != 1 {
+		renderData.Data[operatortypes.NcpReplicasKey] = int32(1)
+		if *ncpReplicas != 1 {
+			*ncpReplicas = 1
 			log.Info(fmt.Sprintf("Set nsx-ncp deployment replicas to 1 instead of %d as HA is disabled",
-				ncpReplicas))
+				*ncpReplicas))
 		}
 	}
 
