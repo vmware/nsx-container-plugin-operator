@@ -288,7 +288,7 @@ func getPrefixFromCIDR(cidr string) (uint32, error) {
 }
 
 func Render(configmap *corev1.ConfigMap, ncpReplicas int32, nsxSecret *corev1.Secret,
-	lbSecret *corev1.Secret) ([]*unstructured.Unstructured, error) {
+	lbSecret *corev1.Secret) ([]*unstructured.Unstructured, error, *render.RenderData) {
 	log.Info("Starting render phase")
 	objs := []*unstructured.Unstructured{}
 
@@ -296,16 +296,16 @@ func Render(configmap *corev1.ConfigMap, ncpReplicas int32, nsxSecret *corev1.Se
 	data := configmap.Data
 	cfg, err := ini.Load([]byte(data[operatortypes.ConfigMapDataKey]))
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to load ConfigMap")
+		return nil, errors.Wrap(err, "failed to load ConfigMap"), nil
 	}
 	renderData := render.MakeRenderData()
 	renderData.Data[operatortypes.NcpConfigMapRenderKey], err = generateConfigMap(cfg, operatortypes.NcpSections)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to render nsx-ncp ConfigMap")
+		return nil, errors.Wrap(err, "failed to render nsx-ncp ConfigMap"), nil
 	}
 	renderData.Data[operatortypes.NodeAgentConfigMapRenderKey], err = generateConfigMap(cfg, operatortypes.AgentSections)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to render nsx-node-agent ConfigMap")
+		return nil, errors.Wrap(err, "failed to render nsx-node-agent ConfigMap"), nil
 	}
 
 	// Set NCP image
@@ -320,13 +320,13 @@ func Render(configmap *corev1.ConfigMap, ncpReplicas int32, nsxSecret *corev1.Se
 	if cfg.Section("ha").HasKey("enable") {
 		haEnabled, err = strconv.ParseBool(cfg.Section("ha").Key("enable").Value())
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to get ha option")
+			return nil, errors.Wrap(err, "failed to get ha option"), nil
 		}
 	}
 	if haEnabled {
 		renderData.Data[operatortypes.NcpReplicasKey] = ncpReplicas
 	} else {
-		renderData.Data[operatortypes.NcpReplicasKey] = 1
+		renderData.Data[operatortypes.NcpReplicasKey] = int32(1)
 		if ncpReplicas != 1 {
 			log.Info(fmt.Sprintf("Set nsx-ncp deployment replicas to 1 instead of %d as HA is disabled",
 				ncpReplicas))
@@ -353,16 +353,16 @@ func Render(configmap *corev1.ConfigMap, ncpReplicas int32, nsxSecret *corev1.Se
 	}
 	manifestDir, err := GetManifestDir()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get manifestDir")
+		return nil, errors.Wrap(err, "failed to get manifestDir"), nil
 	}
 	log.Info(fmt.Sprintf("Got the manifest dir: %s", manifestDir))
 	manifests, err := render.RenderDir(manifestDir, &renderData)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to render manifests")
+		return nil, errors.Wrap(err, "failed to render manifests"), nil
 	}
 
 	objs = append(objs, manifests...)
-	return objs, nil
+	return objs, nil, &renderData
 }
 
 func GetManifestDir() (string, error) {

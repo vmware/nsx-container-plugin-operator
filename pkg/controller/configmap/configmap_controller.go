@@ -256,7 +256,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Render configurations
-	objs, err := Render(instance, ncpReplicas, opNsxSecret, opLbSecret)
+	objs, err, renderData := Render(instance, ncpReplicas, opNsxSecret, opLbSecret)
 	if err != nil {
 		log.Error(err, "Failed to render configurations")
 		r.status.SetDegraded(statusmanager.OperatorConfig, "RenderConfigError",
@@ -322,7 +322,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 
 	if !needChange.ncp && !needChange.agent && !needChange.bootstrap {
 		// Check if NCP_IMAGE or nsx-ncp replicas changed
-		needChange.ncp, err = r.isNcpDeploymentChanged(ncpReplicas)
+		needChange.ncp, err = r.isNcpDeploymentChanged((*renderData).Data["NcpReplicas"].(int32))
 		if err != nil {
 			return reconcile.Result{Requeue: true}, err
 		}
