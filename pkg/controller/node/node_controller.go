@@ -68,11 +68,6 @@ func newReconciler(mgr manager.Manager, status *statusmanager.StatusManager, sha
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
 func add(mgr manager.Manager, r reconcile.Reconciler) error {
-	if r.(*ReconcileNode).sharedInfo.AddNodeTag == false {
-		log.Info("Tagging node logical switch ports was disabled")
-		return nil
-	}
-
 	// Create a new controller
 	c, err := controller.New("node-controller", mgr, controller.Options{Reconciler: r})
 	if err != nil {
@@ -441,6 +436,10 @@ func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
+	if r.sharedInfo.AddNodeTag == false {
+		reqLogger.Info("Tagging node logical switch ports was disabled")
+		return reconcile.Result{}, nil
+	}
 	reqLogger.Info("Reconciling Node")
 
 	// When cachedNodeSet is empty, it's possible that the node controller just starts. The reconciler should know the whole node set to invoke status.setNotDegraded so we list the nodes
