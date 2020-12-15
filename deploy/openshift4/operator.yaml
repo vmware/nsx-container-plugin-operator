@@ -20,6 +20,8 @@ spec:
         key: node-role.kubernetes.io/master
       - effect: NoSchedule
         key: node.kubernetes.io/not-ready
+      - effect: NoSchedule
+        key: node.kubernetes.io/network-unavailable
       volumes:
       - hostPath: {path: /etc/os-release}
         name: host-os-release

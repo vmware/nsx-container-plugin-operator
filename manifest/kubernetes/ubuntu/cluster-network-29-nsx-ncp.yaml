@@ -50,6 +50,7 @@ spec:
       serviceAccountName: ncp-svc-account
       tolerations:
       - {effect: NoSchedule, key: node-role.kubernetes.io/master}
+      - {effect: NoSchedule, key: node.kubernetes.io/network-unavailable}
       volumes:
       - name: projected-volume
         projected:
