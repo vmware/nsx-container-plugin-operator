@@ -266,7 +266,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Render configurations
-	objs, err := Render(instance, ncpReplicas, opNsxSecret, opLbSecret)
+	objs, err := Render(instance, &ncpReplicas, opNsxSecret, opLbSecret)
 	if err != nil {
 		log.Error(err, "Failed to render configurations")
 		r.status.SetDegraded(statusmanager.OperatorConfig, "RenderConfigError",
