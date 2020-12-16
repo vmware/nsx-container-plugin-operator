@@ -248,7 +248,7 @@ func (status *StatusManager) SetFromPodsForOverall() {
 		depProgressing := false
 
 		if dep.Status.UnavailableReplicas > 0 {
-			progressing = append(progressing, fmt.Sprintf("Deployment %q is not available (awaiting %d nodes)", depName.String(), dep.Status.UnavailableReplicas))
+			progressing = append(progressing, fmt.Sprintf("Deployment %q is not available (awaiting %d replicas to be ready)", depName.String(), dep.Status.UnavailableReplicas))
 			depProgressing = true
 		} else if dep.Status.AvailableReplicas == 0 {
 			progressing = append(progressing, fmt.Sprintf("Deployment %q is not yet scheduled on any nodes", depName.String()))
