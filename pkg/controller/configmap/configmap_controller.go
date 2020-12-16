@@ -182,6 +182,16 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		ncpReplicas = int32(operatortypes.NcpDefaultReplicas)
 	}
 
+	addNodeTag := ncpInstallCrd.Spec.AddNodeTag
+	if addNodeTag != r.sharedInfo.AddNodeTag {
+		log.Info(fmt.Sprintf("addNodeTag is changing from %v to %v", r.sharedInfo.AddNodeTag, addNodeTag))
+		if addNodeTag == false {
+			cachedNodeSet := map[string](*statusmanager.NodeStatus){}
+			r.status.SetFromNodes(cachedNodeSet)
+		}
+		r.sharedInfo.AddNodeTag = addNodeTag
+	}
+
 	// Fetch the ConfigMap instance
 	instance := &corev1.ConfigMap{}
 	instanceName := types.NamespacedName{
