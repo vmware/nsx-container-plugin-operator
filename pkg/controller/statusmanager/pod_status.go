@@ -17,6 +17,7 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 
+	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -72,7 +73,8 @@ func FindStatusCondition(conditions []corev1.NodeCondition, conditionType corev1
 	return nil
 }
 
-func SetNodeCondition(conditions *[]corev1.NodeCondition, newCondition corev1.NodeCondition) {
+func SetNodeCondition(conditions *[]corev1.NodeCondition, newCondition corev1.NodeCondition) (changed bool) {
+	changed = false
 	if conditions == nil {
 		conditions = &[]corev1.NodeCondition{}
 	}
@@ -80,29 +82,61 @@ func SetNodeCondition(conditions *[]corev1.NodeCondition, newCondition corev1.No
 	if existingCondition == nil {
 		newCondition.LastTransitionTime = metav1.NewTime(time.Now())
 		*conditions = append(*conditions, newCondition)
-		return
+		return true
 	}
 
 	if existingCondition.Status != newCondition.Status {
 		existingCondition.Status = newCondition.Status
 		existingCondition.LastTransitionTime = metav1.NewTime(time.Now())
+		changed = true
 	}
 
 	existingCondition.Reason = newCondition.Reason
 	existingCondition.Message = newCondition.Message
+	return changed
 }
 
-func (status *StatusManager) setNodeNetworkUnavailable(nodeName string, ready bool, reason string, message string) {
-	if ready == true {
-		log.Info(fmt.Sprintf("Setting status NetworkUnavailable to false for node %s", nodeName))
-	} else {
-		log.Info(fmt.Sprintf("Setting status NetworkUnavailable to true for node %s", nodeName))
+func (status *StatusManager) setNodeNetworkUnavailable(nodeName string, ready bool, reason string, message string, sharedInfo *sharedinfo.SharedInfo) {
+	if sharedInfo.LastNetworkAvailable == nil {
+		sharedInfo.LastNetworkAvailable = make(map[string]time.Time)
 	}
+	_, changed := status.combineNode(nodeName, ready, reason, message)
+	if !changed {
+		log.Info("Node condition is not changed")
+		return
+	}
+	log.Info(fmt.Sprintf("Setting status NetworkUnavailable to %v for node %s", !ready, nodeName))
+	if !ready {
+		delete(sharedInfo.LastNetworkAvailable, nodeName)
+		status.updateNodeStatus(nodeName, ready, reason, message)
+		return
+	}
+	last := time.Now()
+	_, present := sharedInfo.LastNetworkAvailable[nodeName]
+	if !present {
+		sharedInfo.LastNetworkAvailable[nodeName] = last
+		log.Info(fmt.Sprintf("Last network unavailable time of node %s is set to %s", nodeName, last))
+
+		go func() {
+			time.Sleep(time.Duration(operatortypes.TimeBeforeRecoverNetwork) * time.Second)
+			if (sharedInfo.LastNetworkAvailable[nodeName]) != last {
+				log.Info(fmt.Sprintf("Last network unavailable time of node %s changed, expecting %v, got %v, goroutine exiting",
+					nodeName, last, sharedInfo.LastNetworkAvailable[nodeName]))
+				return
+			}
+			status.updateNodeStatus(nodeName, ready, reason, message)
+			return
+		}()
+	}
+}
+
+
+func (status *StatusManager) combineNode(nodeName string, ready bool, reason string, message string) (*corev1.Node, bool) {
 	node := &corev1.Node{}
 	err := status.client.Get(context.TODO(), types.NamespacedName{Name: nodeName}, node)
 	if err != nil {
 		log.Error(err, fmt.Sprintf("Failed to get node %s", nodeName))
-		return
+		return node, false
 	}
 	networkUnavailableCondition := corev1.ConditionFalse
 	if ready == false {
@@ -120,17 +154,28 @@ func (status *StatusManager) setNodeNetworkUnavailable(nodeName string, ready bo
 		Reason:             reason,
 		Message:            message,
 	}
-	SetNodeCondition(&node.Status.Conditions, condition)
-	err = status.client.Status().Update(context.TODO(), node)
+	changed := SetNodeCondition(&node.Status.Conditions, condition)
+	return node, changed
+}
+
+func (status *StatusManager) updateNodeStatus(nodeName string, ready bool, reason string, message string) {
+	// need to retrieve the node info, otherwise, the update may fail because the node has been modified during monitor slept
+	node, changed := status.combineNode(nodeName, ready, reason, message)
+	if !changed {
+		log.Info("Node condition is not changed, skip updating")
+		return
+	}
+	err := status.client.Status().Update(context.TODO(), node)
 	if err != nil {
-		log.Error(err, "Failed to update node condition")
+		log.Error(err, fmt.Sprintf("Failed to update node condition NetworkUnavailable to %v for node %s", !ready, nodeName))
 	} else {
-		log.Info("Updated node condition")
+		log.Info(fmt.Sprintf("Updated node condition NetworkUnavailable to %v for node %s", !ready, nodeName))
 	}
 }
 
+
 // Get the pod status from API server
-func (status *StatusManager) SetNodeConditionFromPods() {
+func (status *StatusManager) SetNodeConditionFromPods(sharedInfo *sharedinfo.SharedInfo) {
 	status.Lock()
 	defer status.Unlock()
 
@@ -147,7 +192,7 @@ func (status *StatusManager) SetNodeConditionFromPods() {
 			return
 		}
 		for _, node := range nodes.Items {
-			status.setNodeNetworkUnavailable(node.ObjectMeta.Name, false, "NSXNodeAgent", "Waiting for nsx-node-agent to be created")
+			status.setNodeNetworkUnavailable(node.ObjectMeta.Name, false, "NSXNodeAgent", "Waiting for nsx-node-agent to be created", sharedInfo)
 		}
 		return
 	}
@@ -176,7 +221,7 @@ func (status *StatusManager) SetNodeConditionFromPods() {
 
 			}
 		}
-		status.setNodeNetworkUnavailable(nodeName, ready, "NSXNodeAgent", messages)
+		status.setNodeNetworkUnavailable(nodeName, ready, "NSXNodeAgent", messages, sharedInfo)
 	}
 }
 

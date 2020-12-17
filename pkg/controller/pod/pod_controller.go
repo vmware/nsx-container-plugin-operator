@@ -180,7 +180,7 @@ func (r *ReconcilePod) Reconcile(request reconcile.Request) (reconcile.Result, e
 
 	reqLogger.Info("Reconciling pod update")
 	r.status.SetFromPodsForOverall()
-	r.status.SetNodeConditionFromPods()
+	r.status.SetNodeConditionFromPods(r.sharedInfo)
 
 	if err := r.recreateNsxNcpResourceIfDeleted(request.Name); err != nil {
 		return reconcile.Result{Requeue: true}, err
