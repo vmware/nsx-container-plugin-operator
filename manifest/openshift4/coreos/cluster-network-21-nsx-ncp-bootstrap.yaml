@@ -38,6 +38,7 @@ spec:
         - {mountPath: /usr/sbin/modinfo, name: host-modinfo, readOnly: true}
         - {mountPath: /usr/lib64/libcrypto.so.1.1, name: host-libcrypto}
         - {mountPath: /host/var/run/multus, name: host-multus}
+        - {mountPath: /var/log/nsx-ujo, name: host-var-log-ujo}
       serviceAccountName: nsx-node-agent-svc-account
       tolerations:
       - {effect: NoSchedule, key: node-role.kubernetes.io/master}
@@ -71,4 +72,6 @@ spec:
         name: host-libcrypto
       - hostPath: {path: /var/run/multus}
         name: host-multus
+      - hostPath: {path: /var/log/nsx-ujo, type: DirectoryOrCreate}
+        name: host-var-log-ujo
   updateStrategy: {type: RollingUpdate}
