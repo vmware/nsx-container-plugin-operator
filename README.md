@@ -107,7 +107,7 @@ Degraded conditions
 #### OpenShift
 
 The operator sets `policy_nsxapi` as True, `single_tier_topology` as True.
-In the ConfigMap, some fields are mandatory including ``adaptor`, `cluster`, `nsx_api_managers`,
+In the ConfigMap, some fields are mandatory including `adaptor`, `cluster`, `nsx_api_managers`,
 `tier0_gateway`(for single T1 case), `top_tier_router`(for single T0 case),
 `external_ip_pools`(for SNAT mode). If any of above options is not provided in the
 operator ConfigMap, the operator will fail to reconcile configurations, error messages
