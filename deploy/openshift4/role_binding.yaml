@@ -1,1 +1,12 @@
-../kubernetes/role_binding.yaml
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: nsx-ncp-operator
+subjects:
+- kind: ServiceAccount
+  name: nsx-ncp-operator
+  namespace: nsx-system-operator
+roleRef:
+  kind: ClusterRole
+  name: nsx-ncp-operator
+  apiGroup: rbac.authorization.k8s.io
