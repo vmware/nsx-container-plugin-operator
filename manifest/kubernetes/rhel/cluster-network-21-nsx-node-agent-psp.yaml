@@ -3,7 +3,7 @@ kind: PodSecurityPolicy
 metadata: {name: nsx-node-agent-psp}
 spec:
   allowedCapabilities: [SYS_ADMIN, NET_ADMIN, SYS_PTRACE, DAC_READ_SEARCH, SYS_NICE,
-    SYS_MODULE]
+    SYS_MODULE, NET_RAW]
   defaultAddCapabilities: null
   fsGroup: {rule: RunAsAny}
   hostIPC: false
