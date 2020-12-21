@@ -37,6 +37,11 @@ spec:
         - {mountPath: /usr/lib/rpm, name: usr-lib-rpm}
         - {mountPath: /usr/sbin/modinfo, name: host-modinfo, readOnly: true}
         - {mountPath: /var/log/nsx-ujo, name: host-var-log-ujo}
+        - {mountPath: /lib/modules, name: host-modules}
+        - {mountPath: /etc/openvswitch, name: host-config-openvswitch}
+        - {mountPath: /tmp/nsx_usr_ovs_kmod_backup, name: dir-tmp-usr-ovs-kmod-backup}
+        - {mountPath: /host/usr/share, name: host-usr-share}
+        - {mountPath: /sbin/depmod, name: host-depmod}
       serviceAccountName: nsx-node-agent-svc-account
       tolerations:
       - {effect: NoSchedule, key: node-role.kubernetes.io/master}
@@ -68,4 +73,14 @@ spec:
         name: host-modinfo
       - hostPath: {path: /var/log/nsx-ujo, type: DirectoryOrCreate}
         name: host-var-log-ujo
+      - hostPath: {path: /lib/modules, type: DirectoryOrCreate}
+        name: host-modules
+      - hostPath: {path: /etc/openvswitch, type: DirectoryOrCreate}
+        name: host-config-openvswitch
+      - hostPath: {path: /tmp/nsx_usr_ovs_kmod_backup, type: DirectoryOrCreate}
+        name: dir-tmp-usr-ovs-kmod-backup
+      - hostPath: {path: /usr/share, type: DirectoryOrCreate}
+        name: host-usr-share
+      - hostPath: {path: /sbin/depmod, type: DirectoryOrCreate}
+        name: host-depmod
   updateStrategy: {type: RollingUpdate}

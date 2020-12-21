@@ -37,6 +37,10 @@ spec:
         - {mountPath: /usr/share/doc, name: usr-share-doc}
         - {mountPath: /var/lib/snapd/apparmor/snap-confine, name: snap-confine}
         - {mountPath: /var/log/nsx-ujo, name: host-var-log-ujo}
+        - {mountPath: /lib/modules, name: host-modules}
+        - {mountPath: /etc/openvswitch, name: host-config-openvswitch}
+        - {mountPath: /tmp/nsx_usr_ovs_kmod_backup, name: dir-tmp-usr-ovs-kmod-backup}
+        - {mountPath: /usr/src, name: host-usr-src}
       serviceAccountName: nsx-node-agent-svc-account
       tolerations:
       - {effect: NoSchedule, key: node-role.kubernetes.io/master}
@@ -72,4 +76,12 @@ spec:
         name: snap-confine
       - hostPath: {path: /var/log/nsx-ujo, type: DirectoryOrCreate}
         name: host-var-log-ujo
+      - hostPath: {path: /lib/modules, type: DirectoryOrCreate}
+        name: host-modules
+      - hostPath: {path: /etc/openvswitch, type: DirectoryOrCreate}
+        name: host-config-openvswitch
+      - hostPath: {path: /tmp/nsx_usr_ovs_kmod_backup, type: DirectoryOrCreate}
+        name: dir-tmp-usr-ovs-kmod-backup
+      - hostPath: {path: /usr/src, type: DirectoryOrCreate}
+        name: host-usr-src
   updateStrategy: {type: RollingUpdate}
