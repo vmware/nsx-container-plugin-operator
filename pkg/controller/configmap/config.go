@@ -379,7 +379,7 @@ func GetManifestDir() (string, error) {
 		return "./manifest/openshift4/coreos", nil
 	} else if strings.Contains(osRelease, "Ubuntu") {
 		return "./manifest/kubernetes/ubuntu", nil
-	} else if strings.Contains(osRelease, "CentOS") {
+	} else if (strings.Contains(osRelease, "CentOS") || strings.Contains(osRelease, "Red Hat")) {
 		return "./manifest/kubernetes/rhel", nil
 	}
 	return "", errors.Wrap(err, "failed to get os-release")
