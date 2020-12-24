@@ -33,4 +33,5 @@ const (
 	NsxCATempPath               string = "/tmp/nsx.ca"
 	NsxNodeAgentContainerName   string = "nsx-node-agent"
 	OsReleaseFile               string = "/host/etc/os-release"
+	TimeBeforeRecoverNetwork    int64  = 150
 )
