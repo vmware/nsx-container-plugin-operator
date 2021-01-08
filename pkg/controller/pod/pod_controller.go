@@ -48,6 +48,8 @@ var ApplyObject = apply.ApplyObject
 // hasn't changed.
 var ResyncPeriod = 2 * time.Minute
 
+var firstBoot = true
+
 // Add creates a new Pod Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager, status *statusmanager.StatusManager, sharedInfo *sharedinfo.SharedInfo) error {
@@ -128,6 +130,11 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	if err != nil {
 		return err
 	}
+	// sometimes watching DaemonSet/Deployment cannot catch the pod restarting
+	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForObject{})
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -160,11 +167,20 @@ type PodOc struct {
 	Pod
 }
 
-func (r *ReconcilePod) isForNsxNcpResource(request reconcile.Request) bool {
+func (r *ReconcilePod) isForNcpDeployOrNodeAgentDS(request reconcile.Request) bool {
 	for _, nsxNcpResource := range r.nsxNcpResources {
 		if nsxNcpResource.Namespace == request.Namespace && nsxNcpResource.Name == request.Name {
 			return true
 		}
+	}
+	return false
+}
+
+func (r *ReconcilePod) isForNsxNodeAgentPod(request reconcile.Request) bool {
+	if (request.Namespace == operatortypes.NsxNamespace && strings.Contains(
+		request.Name, operatortypes.NsxNodeAgentDsName) &&
+		request.Name != operatortypes.NsxNodeAgentDsName) {
+		return true
 	}
 	return false
 }
@@ -174,13 +190,21 @@ func (r *ReconcilePod) isForNsxNcpResource(request reconcile.Request) bool {
 func (r *ReconcilePod) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
-	if !r.isForNsxNcpResource(request) {
+	if err := r.status.CheckExistingAgentPods(&firstBoot, r.sharedInfo); err != nil {
+		return reconcile.Result{Requeue: true}, err
+	}
+
+	if !r.isForNcpDeployOrNodeAgentDS(request) {
+		// the request is not for ncp deployement or nsx-node-agent ds, but for nsx-node-agent pod
+		if r.isForNsxNodeAgentPod(request) {
+			reqLogger.Info("Reconciling pod update for network status")
+			r.status.SetNodeConditionFromPod(request.NamespacedName, r.sharedInfo, nil)
+		}
 		return reconcile.Result{}, nil
 	}
 
 	reqLogger.Info("Reconciling pod update")
 	r.status.SetFromPodsForOverall()
-	r.status.SetNodeConditionFromPods(r.sharedInfo)
 
 	if err := r.recreateNsxNcpResourceIfDeleted(request.Name); err != nil {
 		return reconcile.Result{Requeue: true}, err

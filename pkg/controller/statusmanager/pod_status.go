@@ -84,21 +84,65 @@ func SetNodeCondition(conditions *[]corev1.NodeCondition, newCondition corev1.No
 		*conditions = append(*conditions, newCondition)
 		return true
 	}
-
-	if existingCondition.Status != newCondition.Status {
-		existingCondition.Status = newCondition.Status
-		existingCondition.LastTransitionTime = metav1.NewTime(time.Now())
+	if (existingCondition.Status != newCondition.Status || existingCondition.Reason != newCondition.Reason ||
+		existingCondition.Message != newCondition.Message) {
 		changed = true
+		existingCondition.Status = newCondition.Status
+		existingCondition.Reason = newCondition.Reason
+		existingCondition.Message = newCondition.Message
+		existingCondition.LastTransitionTime = metav1.NewTime(time.Now())
 	}
-
-	existingCondition.Reason = newCondition.Reason
-	existingCondition.Message = newCondition.Message
 	return changed
 }
 
-func (status *StatusManager) setNodeNetworkUnavailable(nodeName string, ready bool, reason string, message string, sharedInfo *sharedinfo.SharedInfo) {
+// CheckExistingAgentPods is for a case: nsx-node-agent becomes unhealthy -> NetworkUnavailable=True -> operator off ->
+// nsx-node-agent becomes healthy and keeps running -> operator up -> operator cannot receive nsx-node-agent event to
+// set NetworkUnavailable=False. So a full sync at the start time is necessary.
+func (status *StatusManager) CheckExistingAgentPods (firstBoot *bool, sharedInfo *sharedinfo.SharedInfo) error {
+	status.Lock()
+	defer status.Unlock()
+
+	if !*firstBoot {
+		return nil
+	}
+	log.Info("Checking all nsx-node-agent pods for node condition")
+	pods := &corev1.PodList{}
+	err := status.client.List(context.TODO(), pods, client.MatchingLabels{"component": operatortypes.NsxNodeAgentContainerName})
+	if err != nil {
+		log.Error(err, "Error getting pods for node condition")
+		return err
+	}
+	if len(pods.Items) == 0 {
+		log.Info("nsx-node-agent not found for node condition")
+		nodes := corev1.NodeList{}
+		err = status.client.List(context.TODO(), &nodes)
+		if err != nil {
+			log.Error(err, "Failed to get nodes for condition updating")
+			return err
+		}
+		for _, node := range nodes.Items {
+			status.setNodeNetworkUnavailable(node.ObjectMeta.Name, false, nil, "NSXNodeAgent", "Waiting for nsx-node-agent to be created", sharedInfo)
+		}
+		*firstBoot = false
+		return nil
+	}
+	podName := types.NamespacedName{}
+	for _, pod := range pods.Items {
+		status.setNodeConditionFromPod(podName, sharedInfo, &pod)
+	}
+	*firstBoot = false
+	return nil
+}
+
+func (status *StatusManager) setNodeNetworkUnavailable(nodeName string, ready bool, startedAt *time.Time, reason string, message string, sharedInfo *sharedinfo.SharedInfo) {
 	if sharedInfo.LastNetworkAvailable == nil {
 		sharedInfo.LastNetworkAvailable = make(map[string]time.Time)
+	}
+	if ready {
+		log.V(1).Info(fmt.Sprintf("Last network unavailable time of node %s is set to %s", nodeName, *startedAt))
+		sharedInfo.LastNetworkAvailable[nodeName] = *startedAt
+	} else {
+		delete(sharedInfo.LastNetworkAvailable, nodeName)
 	}
 	_, changed := status.combineNode(nodeName, ready, reason, message)
 	if !changed {
@@ -107,29 +151,25 @@ func (status *StatusManager) setNodeNetworkUnavailable(nodeName string, ready bo
 	}
 	log.Info(fmt.Sprintf("Setting status NetworkUnavailable to %v for node %s", !ready, nodeName))
 	if !ready {
-		delete(sharedInfo.LastNetworkAvailable, nodeName)
 		status.updateNodeStatus(nodeName, ready, reason, message)
 		return
 	}
-	last := time.Now()
-	_, present := sharedInfo.LastNetworkAvailable[nodeName]
-	if !present {
-		sharedInfo.LastNetworkAvailable[nodeName] = last
-		log.Info(fmt.Sprintf("Last network unavailable time of node %s is set to %s", nodeName, last))
-
-		go func() {
-			time.Sleep(time.Duration(operatortypes.TimeBeforeRecoverNetwork) * time.Second)
-			if (sharedInfo.LastNetworkAvailable[nodeName]) != last {
-				log.Info(fmt.Sprintf("Last network unavailable time of node %s changed, expecting %v, got %v, goroutine exiting",
-					nodeName, last, sharedInfo.LastNetworkAvailable[nodeName]))
-				return
-			}
-			status.updateNodeStatus(nodeName, ready, reason, message)
+	// When the network status looks ready, we still need to wait for a graceful time
+	now := time.Now()
+	startedTime := now.Sub(*startedAt)
+	go func() {
+		sleepTime := operatortypes.TimeBeforeRecoverNetwork - startedTime
+		time.Sleep(sleepTime)
+		if (sharedInfo.LastNetworkAvailable[nodeName]) != *startedAt {
+			log.V(1).Info(fmt.Sprintf("Last network unavailable time of node %s changed, expecting %v, got %v, goroutine exiting",
+				nodeName, *startedAt, sharedInfo.LastNetworkAvailable[nodeName]))
 			return
-		}()
-	}
+		}
+		log.Info(fmt.Sprintf("Setting status NetworkUnavailable to %v for node %s after %v", !ready, nodeName, sleepTime))
+		status.updateNodeStatus(nodeName, ready, reason, message)
+		return
+	}()
 }
-
 
 func (status *StatusManager) combineNode(nodeName string, ready bool, reason string, message string) (*corev1.Node, bool) {
 	node := &corev1.Node{}
@@ -175,54 +215,83 @@ func (status *StatusManager) updateNodeStatus(nodeName string, ready bool, reaso
 
 
 // Get the pod status from API server
-func (status *StatusManager) SetNodeConditionFromPods(sharedInfo *sharedinfo.SharedInfo) {
+func (status *StatusManager) SetNodeConditionFromPod(podName types.NamespacedName, sharedInfo *sharedinfo.SharedInfo, pod *corev1.Pod) {
 	status.Lock()
 	defer status.Unlock()
+	status.setNodeConditionFromPod(podName, sharedInfo, pod)
+}
 
-	pods := &corev1.PodList{}
-	err := status.client.List(context.TODO(), pods, client.MatchingLabels{"component": operatortypes.NsxNodeAgentContainerName})
-	if err != nil {
-		log.Error(err, fmt.Sprintf("Error getting %s for node condition", operatortypes.NsxNodeAgentContainerName))
-	} else if len(pods.Items) == 0 {
-		log.Info("nsx-node-agent not found for node condition")
-		nodes := corev1.NodeList{}
-		err = status.client.List(context.TODO(), &nodes)
+func (status *StatusManager) setNodeConditionFromPod(podName types.NamespacedName, sharedInfo *sharedinfo.SharedInfo, pod *corev1.Pod) {
+	var reason string
+	now := time.Now()
+	if pod == nil {
+		pod = &corev1.Pod{}
+		err := status.client.Get(context.TODO(), podName, pod)
 		if err != nil {
-			log.Error(err, "Failed to get nodes for condition updating")
+			log.Error(err, fmt.Sprintf("Error getting %s for node condition", operatortypes.NsxNodeAgentContainerName))
 			return
 		}
-		for _, node := range nodes.Items {
-			status.setNodeNetworkUnavailable(node.ObjectMeta.Name, false, "NSXNodeAgent", "Waiting for nsx-node-agent to be created", sharedInfo)
-		}
-		return
 	}
-	pod := corev1.Pod{}
-	for _, pod = range pods.Items {
-		containerStatus := corev1.ContainerStatus{}
-		ready := true
-		messages := ""
-		nodeName := pod.Spec.NodeName
-		for _, containerStatus = range pod.Status.ContainerStatuses {
-			if containerStatus.State.Running == nil {
-				ready = false
-				if containerStatus.State.Waiting != nil {
-					if containerStatus.State.Waiting.Message == "" {
-						messages = messages + fmt.Sprintf("nsx-node-agent/%s not running: %s. ", containerStatus.Name, containerStatus.State.Waiting.Reason)
+	containerStatus := corev1.ContainerStatus{}
+	ready := true
+	// messages is used to store the error message from container status,
+	// tmpMsgs is for the status that pod just restarted in a short time
+	var messages, tmpMsgs string
+	nodeName := pod.Spec.NodeName
+	var startedAt *time.Time
+	var lastStartedAt *time.Time
+	// when pod is pending, its ContainerStatuses is empty
+	if len(pod.Status.ContainerStatuses) == 0 {
+		ready = false
+		messages = fmt.Sprintf("nsx-node-agent not running: %s.", pod.Status.Phase)
+	}
+	for _, containerStatus = range pod.Status.ContainerStatuses {
+		if containerStatus.State.Running == nil {
+			ready = false
+			if containerStatus.State.Waiting != nil {
+				if containerStatus.State.Waiting.Message == "" {
+					if containerStatus.State.Waiting.Reason == "" {
+						reason = "Unknown"
 					} else {
-						messages = messages + fmt.Sprintf("nsx-node-agent/%s not running: %s. ", containerStatus.Name, containerStatus.State.Waiting.Message)
+						reason = containerStatus.State.Waiting.Reason
 					}
-				} else if containerStatus.State.Terminated != nil {
-					if containerStatus.State.Terminated.Message == "" {
-						messages = messages + fmt.Sprintf("nsx-node-agent/%s not running: %s. ", containerStatus.Name, containerStatus.State.Terminated.Reason)
-					} else {
-						messages = messages + fmt.Sprintf("nsx-node-agent/%s not running: %s. ", containerStatus.Name, containerStatus.State.Terminated.Message)
-					}
+					messages = messages + fmt.Sprintf("%s/%s not running: %s. ", pod.Name, containerStatus.Name, reason)
+				} else {
+					messages = messages + fmt.Sprintf("%s/%s not running: %s. ", pod.Name, containerStatus.Name, containerStatus.State.Waiting.Message)
 				}
-
+			} else if containerStatus.State.Terminated != nil {
+				if containerStatus.State.Terminated.Message == "" {
+					if containerStatus.State.Terminated.Reason == "" {
+						reason = "Unknown"
+					} else {
+						reason = containerStatus.State.Terminated.Reason
+					}
+					messages = messages + fmt.Sprintf("%s/%s not running: %s. ", pod.Name, containerStatus.Name, reason)
+				} else {
+					messages = messages + fmt.Sprintf("%s/%s not running: %s. ", pod.Name, containerStatus.Name, containerStatus.State.Terminated.Message)
+				}
+			}
+		} else {
+			// pod is running, but we should check if it just restarted
+			startedAt = &containerStatus.State.Running.StartedAt.Time
+			// there're 3 containers in nsx-node-agent pod, we should check the latest started time
+			if lastStartedAt == nil || (*startedAt).Sub(*lastStartedAt) > 0 {
+				lastStartedAt = startedAt
+			}
+			runningTime := now.Sub(*startedAt)
+			if runningTime < operatortypes.TimeBeforeRecoverNetwork {
+				log.Info(fmt.Sprintf("%s/%s for node %s started for less than %v", pod.Name, containerStatus.Name, nodeName, runningTime))
+				tmpMsgs = tmpMsgs + fmt.Sprintf("%s/%s started for less than %v. ", pod.Name, containerStatus.Name, runningTime)
 			}
 		}
-		status.setNodeNetworkUnavailable(nodeName, ready, "NSXNodeAgent", messages, sharedInfo)
 	}
+	if len(tmpMsgs) > 0 {
+		// if the pod just restarted, we still set the ready to false then try to set it to true,
+		// i.e. invoke the setNodeNetworkUnavailable 2 times because there's no sequent pod status change to
+		// trigger the pod controller to set ready to true.
+		status.setNodeNetworkUnavailable(nodeName, false, nil, "NSXNodeAgent", messages + tmpMsgs, sharedInfo)
+	}
+	status.setNodeNetworkUnavailable(nodeName, ready, lastStartedAt, "NSXNodeAgent", messages, sharedInfo)
 }
 
 // SetFromPodsForOverall sets the operator Degraded/Progressing/Available status, based on
