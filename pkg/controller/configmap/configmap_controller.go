@@ -358,6 +358,9 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 
 	// Apply objects to K8s cluster
 	for _, obj := range objs {
+		if len(obj.GetName()) == 0 {
+			continue
+		}
 		// Mark the object to be GC'd if the owner is deleted
 		err = r.setControllerReference(r, networkConfig, obj)
 		if err != nil {
