@@ -1,8 +1,0 @@
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata: {name: nsx-node-agent-psp-cluster-role}
-rules:
-- apiGroups: [policy]
-  resourceNames: [nsx-node-agent-psp]
-  resources: [podsecuritypolicies]
-  verbs: [use]

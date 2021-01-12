@@ -1,3 +1,0 @@
-apiVersion: v1
-kind: ServiceAccount
-metadata: {name: ncp-svc-account, namespace: nsx-system}

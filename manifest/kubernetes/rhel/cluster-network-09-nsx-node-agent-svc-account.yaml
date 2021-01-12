@@ -1,3 +1,0 @@
-apiVersion: v1
-kind: ServiceAccount
-metadata: {name: nsx-node-agent-svc-account, namespace: nsx-system}

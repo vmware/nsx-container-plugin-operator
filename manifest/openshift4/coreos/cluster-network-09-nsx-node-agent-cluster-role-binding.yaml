@@ -1,6 +1,0 @@
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata: {name: nsx-node-agent-cluster-role-binding}
-roleRef: {kind: ClusterRole, name: nsx-node-agent-cluster-role}
-subjects:
-- {kind: ServiceAccount, name: nsx-node-agent-svc-account, namespace: nsx-system}

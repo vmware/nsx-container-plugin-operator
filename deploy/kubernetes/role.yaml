@@ -39,7 +39,7 @@ rules:
   resources: [deployments, endpoints, ingressclasses, nodes, pods/log, replicationcontrollers, secrets]
   verbs: [get, list, watch]
 - apiGroups: [vmware.com]
-  resources: [loadbalancers, loadbalancers/status, nsxlbmonitors, nsxlbmonitors/status]
+  resources: [loadbalancers, loadbalancers/status, nsxlbmonitors, nsxlbmonitors/status, virtualnetworkinterfaces, virtualnetworkinterfaces/status, virtualnetworks, virtualnetworks/status]
   verbs: [create, get, list, patch, update, watch, delete]
 - apiGroups: [policy]
   resources: [podsecuritypolicies]
