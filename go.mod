@@ -16,7 +16,7 @@ require (
 	github.com/sirupsen/logrus v1.5.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.4.0
-	github.com/vmware/go-vmware-nsxt v0.0.0-20201110195518-0d17c798219b
+	github.com/vmware/go-vmware-nsxt v0.0.0-20201207175959-23201aae9cc3
 	github.com/vmware/vsphere-automation-sdk-go/runtime v0.2.0
 	github.com/vmware/vsphere-automation-sdk-go/services/nsxt v0.3.0
 	gopkg.in/ini.v1 v1.51.0
