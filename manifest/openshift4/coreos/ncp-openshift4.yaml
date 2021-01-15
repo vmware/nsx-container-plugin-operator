@@ -440,57 +440,6 @@ data:
 
 
 ---
-apiVersion: v1
-kind: SecurityContextConstraints
-metadata:
-  annotations:
-    kubernetes.io/description: scc-ncp provides the SCC for NCP and NSX Node Agent
-  creationTimestamp: null
-  name: ncp-scc
-
-allowHostDirVolumePlugin: true
-allowHostIPC: false
-allowHostNetwork: true
-allowHostPID: true
-allowHostPorts: false
-allowPrivilegedContainer: true
-allowedCapabilities:
-- SYS_ADMIN
-- NET_ADMIN
-- SYS_PTRACE
-- DAC_READ_SEARCH
-- SYS_NICE
-- SYS_MODULE
-
-defaultAddCapabilities: null
-fsGroup:
-  type: MustRunAs
-groups:
-- system:authenticated
-
-priority: null
-readOnlyRootFilesystem: false
-requiredDropCapabilities:
-- KILL
-runAsUser:
-  type: RunAsAny
-seLinuxContext:
-  seLinuxOptions:
-    type: spc_t
-    level: s0:c0.c1023
-  type: MustRunAs
-supplementalGroups:
-  type: RunAsAny
-volumes:
-- configMap
-- downwardAPI
-- emptyDir
-- persistentVolumeClaim
-- projected
-- secret
-
-
----
 # Yaml template for NCP Deployment
 # Proper kubernetes API and NSX API parameters, and NCP Docker image
 # must be specified.
