@@ -112,7 +112,7 @@ func (r *ReconcilePod) testRequestContainsNsxNcpResource(t *testing.T) {
 		},
 	}
 
-	if !r.isForNsxNcpResource(req) {
+	if !r.isForNcpDeployOrNodeAgentDS(req) {
 		t.Fatalf("pod controller must honor the request for NSX NCP Resource")
 	}
 }
@@ -125,12 +125,12 @@ func (r *ReconcilePod) testRequestNotContainsNsxNcpResource(t *testing.T) {
 		},
 	}
 
-	if r.isForNsxNcpResource(req) {
+	if r.isForNcpDeployOrNodeAgentDS(req) {
 		t.Fatalf("pod controller must ignore the request for non NSX NCP Resource")
 	}
 }
 
-func TestPodController_isForNsxNcpResource(t *testing.T) {
+func TestPodController_isForNcpDeployOrNodeAgentDS(t *testing.T) {
 	r := getTestReconcilePod("openshift4")
 	r.testRequestContainsNsxNcpResource(t)
 	r.testRequestNotContainsNsxNcpResource(t)
