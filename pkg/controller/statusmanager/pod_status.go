@@ -16,7 +16,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	configv1 "github.com/openshift/api/config/v1"
-
+	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	appsv1 "k8s.io/api/apps/v1"
@@ -496,4 +496,25 @@ func (adaptor *StatusOc) setLastPodState(
 
 func (adaptor *StatusK8s) setLastPodState(status *StatusManager, dss map[types.NamespacedName]daemonsetState, deps map[types.NamespacedName]deploymentState) error {
 	return nil
+}
+
+func (status *StatusManager) CombineConditions(conditions *[]configv1.ClusterOperatorStatusCondition,
+	newConditions *[]configv1.ClusterOperatorStatusCondition) (bool, string) {
+	messages := ""
+	changed := false
+	for _, newCondition := range *newConditions {
+		existingCondition := v1helpers.FindStatusCondition(*conditions, newCondition.Type)
+		if existingCondition == nil {
+			v1helpers.SetStatusCondition(conditions, newCondition)
+			messages += fmt.Sprintf("%v. ", newCondition)
+			changed = true
+		} else if (existingCondition.Status != newCondition.Status ||
+			existingCondition.Reason != newCondition.Reason ||
+			existingCondition.Message != newCondition.Message) {
+			v1helpers.SetStatusCondition(conditions, newCondition)
+			messages += fmt.Sprintf("%v. ", newCondition)
+			changed = true
+		}
+	}
+	return changed, messages
 }

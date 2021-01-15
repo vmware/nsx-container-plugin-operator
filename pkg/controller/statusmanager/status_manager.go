@@ -146,9 +146,7 @@ func (adaptor *StatusK8s) set(status *StatusManager, reachedAvailableLevel bool,
 				{Name: "operator", Version: version.Version},
 			}
 		}
-		for _, condition := range conditions {
-			v1helpers.SetStatusCondition(&co.Status.Conditions, condition)
-		}
+		status.CombineConditions(&co.Status.Conditions, &conditions)
 
 		progressingCondition := v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorProgressing)
 		availableCondition := v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorAvailable)
@@ -168,8 +166,8 @@ func (adaptor *StatusK8s) set(status *StatusManager, reachedAvailableLevel bool,
 		}
 
 		// Set status to ncp-install CRD
-		status.setNcpInstallCrdStatus(status.OperatorNamespace, &co.Status.Conditions)
-		return nil
+		err = status.setNcpInstallCrdStatus(status.OperatorNamespace, &co.Status.Conditions)
+		return err
 	})
 	if err != nil {
 		log.Error(err, "Failed to set NcpInstall")
@@ -193,9 +191,7 @@ func (adaptor *StatusOc) set(status *StatusManager, reachedAvailableLevel bool, 
 				{Name: "operator", Version: version.Version},
 			}
 		}
-		for _, condition := range conditions {
-			v1helpers.SetStatusCondition(&co.Status.Conditions, condition)
-		}
+		status.CombineConditions(&co.Status.Conditions, &conditions)
 
 		progressingCondition := v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorProgressing)
 		availableCondition := v1helpers.FindStatusCondition(co.Status.Conditions, configv1.OperatorAvailable)
@@ -237,8 +233,8 @@ func (adaptor *StatusOc) set(status *StatusManager, reachedAvailableLevel bool, 
 		}
 		log.Info(fmt.Sprintf("Updated ClusterOperator with conditions:\n%s", string(buf)))
 		// Set status to ncp-install CRD
-		status.setNcpInstallCrdStatus(status.OperatorNamespace, &co.Status.Conditions)
-		return nil
+		err = status.setNcpInstallCrdStatus(status.OperatorNamespace, &co.Status.Conditions)
+		return err
 	})
 	if err != nil {
 		log.Error(err, "Failed to set ClusterOperator")
@@ -304,22 +300,24 @@ func (status *StatusManager) SetDeployments(deployments []types.NamespacedName) 
 	status.deployments = deployments
 }
 
-func (status *StatusManager) setNcpInstallCrdStatus(operatorNamespace string, conditions *[]configv1.ClusterOperatorStatusCondition) {
+func (status *StatusManager) setNcpInstallCrdStatus(operatorNamespace string, conditions *[]configv1.ClusterOperatorStatusCondition) error {
 	crd := &operatorv1.NcpInstall{}
 	err := status.client.Get(context.TODO(), types.NamespacedName{Name: operatortypes.NcpInstallCRDName,
 		Namespace: operatorNamespace}, crd)
 	if err != nil {
 		log.Error(err, "Failed to get ncp-install CRD")
-		return
+		return err
 	}
-	for _, condition := range *conditions {
-		v1helpers.SetStatusCondition(&crd.Status.Conditions, condition)
-		log.Info(fmt.Sprintf("Trying to update ncp-install CRD with condition %v", condition))
+	changed, messages := status.CombineConditions(&crd.Status.Conditions, conditions)
+	if !changed {
+		return nil
 	}
+	log.Info(fmt.Sprintf("Trying to update ncp-install CRD with condition %s", messages))
 	err = status.client.Status().Update(context.TODO(), crd)
 	if err != nil {
 		log.Error(err, "Failed to update ncp-install CRD status")
 	} else {
 		log.Info("Updated ncp-install CRD status")
 	}
+	return err
 }
