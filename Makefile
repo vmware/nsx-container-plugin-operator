@@ -9,13 +9,15 @@ GOPATH             ?= $$($(GO) env GOPATH)
 .PHONY: all
 all: build
 
+include versioning.mk
+
 LDFLAGS += $(VERSION_LDFLAGS)
-OPERATOR_NAME = nsx-ncp-operator
+OPERATOR_NAME = vmware/nsx-container-plugin-operator
 
 .PHONY: build
 build:
 	GOOS=linux $(GO) build -o $(BINDIR)/$(OPERATOR_NAME) $(GOFLAGS) -ldflags '$(LDFLAGS)' ./cmd/manager
-	docker build -f build/Dockerfile . -t $(OPERATOR_NAME)
+	docker build -f build/Dockerfile . -t $(OPERATOR_NAME):$(DOCKER_IMG_VERSION)
 
 .PHONY: bin
 bin:
