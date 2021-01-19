@@ -18,6 +18,7 @@ OPERATOR_NAME = vmware/nsx-container-plugin-operator
 build:
 	GOOS=linux $(GO) build -o $(BINDIR)/$(OPERATOR_NAME) $(GOFLAGS) -ldflags '$(LDFLAGS)' ./cmd/manager
 	docker build -f build/Dockerfile . -t $(OPERATOR_NAME):$(DOCKER_IMG_VERSION)
+	docker tag $(OPERATOR_NAME):$(DOCKER_IMG_VERSION) $(OPERATOR_IMG_NAME)
 
 .PHONY: bin
 bin:
