@@ -24,16 +24,17 @@ import (
 var log = logf.Log.WithName("shared_info")
 
 type SharedInfo struct {
-	AdaptorName           string
-	AddNodeTag            bool
-	LastNetworkAvailable   map[string]time.Time
-	NetworkConfig         *configv1.Network
-	OperatorConfigMap     *corev1.ConfigMap
-	OperatorNsxSecret     *corev1.Secret
+	AdaptorName               string
+	AddNodeTag                bool
+	LastNetworkAvailable      map[string]time.Time
+	LastNodeAgentStartTime    map[string]time.Time
+	NetworkConfig             *configv1.Network
+	OperatorConfigMap         *corev1.ConfigMap
+	OperatorNsxSecret         *corev1.Secret
 
-	NsxNodeAgentDsSpec    *unstructured.Unstructured
-	NsxNcpBootstrapDsSpec *unstructured.Unstructured
-	NsxNcpDeploymentSpec  *unstructured.Unstructured
+	NsxNodeAgentDsSpec        *unstructured.Unstructured
+	NsxNcpBootstrapDsSpec     *unstructured.Unstructured
+	NsxNcpDeploymentSpec      *unstructured.Unstructured
 }
 
 func New(mgr manager.Manager, operatorNamespace string) (*SharedInfo, error) {

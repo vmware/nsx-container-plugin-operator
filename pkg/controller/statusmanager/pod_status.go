@@ -240,6 +240,22 @@ func (status *StatusManager) setNodeConditionFromPod(podName types.NamespacedNam
 	nodeName := pod.Spec.NodeName
 	var startedAt *time.Time
 	var lastStartedAt *time.Time
+	if sharedInfo.LastNodeAgentStartTime == nil {
+		sharedInfo.LastNodeAgentStartTime = make(map[string]time.Time)
+	}
+	// When delete/recreate nsx-node-agent ds, it's possible that the operator
+	// received the outdated pot event after the new pod running. For this case
+	// we should ignore the outdated event, otherwise, the operator may mistakenly
+	// set the NetworkUnavailbe status.
+	podStartedAt := pod.Status.StartTime.Time
+	nodeLastStartedAt := sharedInfo.LastNodeAgentStartTime[nodeName]
+	if podStartedAt.Before(nodeLastStartedAt) {
+		log.Info("Pod %s started at %v on node %s is outdated, there's new pod started at %v", podStartedAt, podName, nodeName, nodeLastStartedAt)
+		return
+	} else {
+		sharedInfo.LastNodeAgentStartTime[nodeName] = podStartedAt
+	}
+
 	// when pod is pending, its ContainerStatuses is empty
 	if len(pod.Status.ContainerStatuses) == 0 {
 		ready = false
