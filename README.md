@@ -13,16 +13,18 @@ and it will take care of deploying NSX integration components, and precisely:
 * The nsx-ncp-bootstrap daemonset
 * The nsx-node-agent daemonset
 
-For Openshift 4 clusters, the nsx-container-plugin operator monitors the network
-CR in the config.openshift.io namespace to update the container network CIDRs
-used by NCP.
-
-The nsx-container-plugin operator also monitors a dedicated ConfigMap, applies
-changes to NCP and nsx-node-agent configuration, and restart the relevant pods
+The nsx-container-plugin operator monitors a dedicated ConfigMap, applies changes
+to NCP and nsx-node-agent configuration, and creates/restarts the relevant pods
 so that the relevant configuration changes are picked up.
 
-In addition, the nsx-container-plugin operator monitors nodes ensuring the
-corresponding NSX logical port is enabled as a container host logical port.
+The nsx-container-plugin operator also monitors the nsx-node-agent status and
+updates the network status on relevant nodes.
+
+In addition, the nsx-container-plugin operator is able to monitor nodes ensuring
+the corresponding NSX logical port is enabled as a container host logical port.
+
+For Openshift 4 clusters, the nsx-container-plugin operator especially monitors
+the `network.config.openshift.io` CR to update the container network CIDRs used by NCP.
 
 ## Try it out
 
@@ -59,9 +61,9 @@ Create manifest files:
 ```
 $ openshift-install --dir=MY_CLUSTER create manifests
 ```
-Put operator yaml files from `deploy/openshift/` and `manifests/openshift/coreos`
-to `MY_CLUSTER/manifests`, edit configmap.yaml about operator configurations,
-add the operator image and NCP image in operator.yaml.
+Put operator yaml files from `deploy/openshift4/` to `MY_CLUSTER/manifests`,
+edit configmap.yaml about operator configurations, add the operator image and
+NCP image in operator.yaml.
 
 Generate ignition configuration files:
 ```
@@ -70,13 +72,17 @@ $ openshift-install --dir=MY_CLUSTER create ignition-configs
 This bootstrap ignition file will be added to the terraform tfvars.
 Then use terraform to install Openshift 4 cluster on vSphere.
 
+### Upgrade
+
+For upgrading, all yaml files in `deploy/${platform}/` should be involved,
+especially to check the `image` and `NCP_IMAGE` in `deploy/${platform}/operator.yaml
 
 
 ## Documentation
 
 ### Cluster network config (Openshift specific)
 Cluster network config is initially set in install-config.yaml, user could apply
-`Network.config.openshift.io` CRD to update `clusterNetwork` in `manifests/openshift/cluster-network-02-config.yml`.
+`network.config.openshift.io` CRD to update `clusterNetwork` in `manifests/cluster-network-02-config.yml`.
 *Example configurations*
 ```
 apiVersion: config.openshift.io/v1
