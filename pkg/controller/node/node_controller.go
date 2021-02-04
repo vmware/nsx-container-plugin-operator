@@ -188,9 +188,11 @@ func filterPortByNodeAddress(nsxClients *NsxClients, ports *[]nsxtmgr.LogicalPor
 		if len(logicalPort.RealizedBindings) == 0 {
 			continue
 		}
-		address := logicalPort.RealizedBindings[0].Binding.IpAddress
-		if address == nodeAddress {
-			return &port, nil
+		for _, realizedBinding := range logicalPort.RealizedBindings {
+			address := realizedBinding.Binding.IpAddress
+			if address == nodeAddress {
+				return &port, nil
+			}
 		}
 	}
 	return nil, errors.Errorf("No port matches address %s", nodeAddress)
