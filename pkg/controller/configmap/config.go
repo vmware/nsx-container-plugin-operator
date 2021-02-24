@@ -323,16 +323,13 @@ func Render(configmap *corev1.ConfigMap, ncpReplicas *int32, nsxSecret *corev1.S
 			return nil, errors.Wrap(err, "failed to get ha option")
 		}
 	}
-	if haEnabled {
-		renderData.Data[operatortypes.NcpReplicasKey] = *ncpReplicas
-	} else {
-		renderData.Data[operatortypes.NcpReplicasKey] = int32(1)
-		if *ncpReplicas != 1 {
-			*ncpReplicas = 1
-			log.Info(fmt.Sprintf("Set nsx-ncp deployment replicas to 1 instead of %d as HA is disabled",
-				*ncpReplicas))
-		}
+
+	if !haEnabled && *ncpReplicas != 1 {
+		log.Info(fmt.Sprintf("Set nsx-ncp deployment replicas to 1 instead of %d as HA is disabled",
+			*ncpReplicas))
+		*ncpReplicas = 1
 	}
+	renderData.Data[operatortypes.NcpReplicasKey] = *ncpReplicas
 
 	// Set LB secret
 	if lbSecret != nil {
