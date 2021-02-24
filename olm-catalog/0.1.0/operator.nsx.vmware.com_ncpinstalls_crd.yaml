@@ -1,1 +1,1 @@
-./deploy/openshift4/operator.nsx.vmware.com_ncpinstalls_crd.yaml
+../../deploy/openshift4/operator.nsx.vmware.com_ncpinstalls_crd.yaml
