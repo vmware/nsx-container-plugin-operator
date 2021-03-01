@@ -332,26 +332,30 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 
 	if !needChange.ncp && !needChange.agent && !needChange.bootstrap {
 		// Check if NCP_IMAGE or nsx-ncp replicas changed
-		needChange.ncp, err = r.isNcpDeploymentChanged(ncpReplicas)
+		anyMonitoredResDeleted, err := r.isAnyMonitoredNCPResDeleted()
 		if err != nil {
 			return reconcile.Result{Requeue: true}, err
-		}
-
-		if !needChange.ncp {
-			log.Info("no new configuration needs to apply")
-			// Check if network config status must be updated
-			if networkConfigChanged {
-				err = updateNetworkStatus(networkConfig, instance, r)
-				if err != nil {
-					r.status.SetDegraded(statusmanager.ClusterConfig, "UpdateNetworkStatusError",
-						fmt.Sprintf("Failed to update network status: %v", err))
-					return reconcile.Result{}, err
-				}
+		} else if !anyMonitoredResDeleted {
+			needChange.ncp, err = r.isNcpDeploymentChanged(ncpReplicas)
+			if err != nil {
+				return reconcile.Result{Requeue: true}, err
 			}
-			r.status.SetNotDegraded(statusmanager.ClusterConfig)
-			r.status.SetNotDegraded(statusmanager.OperatorConfig)
-			return reconcile.Result{}, nil
-		} else {
+
+			if !needChange.ncp {
+				log.Info("no new configuration needs to apply")
+				// Check if network config status must be updated
+				if networkConfigChanged {
+					err = updateNetworkStatus(networkConfig, instance, r)
+					if err != nil {
+						r.status.SetDegraded(statusmanager.ClusterConfig, "UpdateNetworkStatusError",
+							fmt.Sprintf("Failed to update network status: %v", err))
+						return reconcile.Result{}, err
+					}
+				}
+				r.status.SetNotDegraded(statusmanager.ClusterConfig)
+				r.status.SetNotDegraded(statusmanager.OperatorConfig)
+				return reconcile.Result{}, nil
+			}
 			log.Info("nsx-ncp deployment changed")
 		}
 	}
@@ -494,6 +498,25 @@ func (r *ReconcileConfigMap) updateSharedInfoWithNsxNcpResources(objs []*unstruc
 		}
 	}
 	log.Info("Updated shared info with Nsx Ncp Resources")
+}
+
+func (r *ReconcileConfigMap) isAnyMonitoredNCPResDeleted() (bool, error) {
+	monitoredResNames := []string{
+		operatortypes.NsxNodeAgentDsName,
+		operatortypes.NsxNcpBootstrapDsName,
+		operatortypes.NsxNcpDeploymentName}
+	for _, monitoredResName := range monitoredResNames {
+		resExists, err := operatortypes.CheckIfNCPK8sResourceExists(
+			r.client, monitoredResName)
+		if err != nil {
+			return false, err
+		} else if !resExists {
+			log.Info(fmt.Sprintf(
+				"Monitored resource %s not found", monitoredResName))
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (r *ReconcileConfigMap) isNcpDeploymentChanged(ncpReplicas int32) (bool, error) {

@@ -356,18 +356,6 @@ func TestPodControllerReconcile(t *testing.T) {
 	r.testReconcileOnCLBNsxNodeAgentInvalidResolvConf(t)
 }
 
-func TestPodController_identifyAndGetInstance(t *testing.T) {
-	if !reflect.DeepEqual(identifyAndGetInstance(operatortypes.NsxNcpDeploymentName), &appsv1.Deployment{}) {
-		t.Fatalf("nsx-ncp instance must be a Deployment")
-	}
-	if !reflect.DeepEqual(identifyAndGetInstance(operatortypes.NsxNcpBootstrapDsName), &appsv1.DaemonSet{}) {
-		t.Fatalf("nsx-ncp instance must be a DaemonSet")
-	}
-	if !reflect.DeepEqual(identifyAndGetInstance(operatortypes.NsxNodeAgentDsName), &appsv1.DaemonSet{}) {
-		t.Fatalf("nsx-ncp instance must be a DaemonSet")
-	}
-}
-
 func TestPodController_deletePods(t *testing.T) {
 	c := fake.NewFakeClient()
 	nodeAgentPod := &corev1.Pod{

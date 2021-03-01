@@ -19,7 +19,6 @@ import (
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
@@ -157,7 +156,7 @@ type Adaptor interface {
 	setControllerReference(r *ReconcilePod, obj *unstructured.Unstructured) error
 }
 
-type Pod struct {}
+type Pod struct{}
 
 type PodK8s struct {
 	Pod
@@ -177,9 +176,9 @@ func (r *ReconcilePod) isForNcpDeployOrNodeAgentDS(request reconcile.Request) bo
 }
 
 func (r *ReconcilePod) isForNsxNodeAgentPod(request reconcile.Request) bool {
-	if (request.Namespace == operatortypes.NsxNamespace && strings.Contains(
+	if request.Namespace == operatortypes.NsxNamespace && strings.Contains(
 		request.Name, operatortypes.NsxNodeAgentDsName) &&
-		request.Name != operatortypes.NsxNodeAgentDsName) {
+		request.Name != operatortypes.NsxNodeAgentDsName {
 		return true
 	}
 	return false
@@ -221,51 +220,38 @@ func (r *ReconcilePod) Reconcile(request reconcile.Request) (reconcile.Result, e
 }
 
 func (r *ReconcilePod) recreateNsxNcpResourceIfDeleted(resName string) error {
-	instance := identifyAndGetInstance(resName)
-	instanceDetails := types.NamespacedName{
-		Namespace: operatortypes.NsxNamespace,
-		Name:      resName,
-	}
-
-	doesResExist, err := r.checkIfK8sResourceExists(instance, instanceDetails)
+	doesResExist, err := operatortypes.CheckIfNCPK8sResourceExists(
+		r.client, resName)
 	if err != nil {
 		log.Error(err, fmt.Sprintf(
-			"Could not retrieve K8s resource - '%s'", instanceDetails.Name))
+			"An error occurred while retrieving K8s resource - '%s'", resName))
 		return err
 	}
 	if doesResExist {
-		log.Info(fmt.Sprintf(
-			"K8s resource - '%s' already exists", instanceDetails.Name))
+		log.V(1).Info(fmt.Sprintf(
+			"K8s resource - '%s' already exists", resName))
 		return nil
 	}
 
-	log.Info(fmt.Sprintf("K8s resource - '%s' does not exist. It will be recreated", instanceDetails.Name))
+	log.Info(fmt.Sprintf("K8s resource - '%s' does not exist. It will be recreated", resName))
 
 	k8sObj := r.identifyAndGetK8SObjToCreate(resName)
 	if k8sObj == nil {
 		log.Info(fmt.Sprintf("%s spec not set. Waiting for config_map controller to set it", resName))
 	}
 	if err = r.setControllerReference(r, k8sObj); err != nil {
-		log.Info(fmt.Sprintf(
-			"Failed to set controller reference for K8s resource: %s", instanceDetails.Name))
+		log.Error(err, fmt.Sprintf(
+			"Failed to set controller reference for K8s resource: %s", resName))
 		return err
 	}
 	if err = r.createK8sObject(k8sObj); err != nil {
 		log.Info(fmt.Sprintf(
-			"Failed to recreate K8s resource: %s", instanceDetails.Name))
+			"Failed to recreate K8s resource: %s", resName))
 		return err
 	}
-	log.Info(fmt.Sprintf("Recreated K8s resource: %s", instanceDetails.Name))
+	log.Info(fmt.Sprintf("Recreated K8s resource: %s", resName))
 
 	return nil
-}
-
-func identifyAndGetInstance(resName string) runtime.Object {
-	if resName == operatortypes.NsxNcpBootstrapDsName || resName == operatortypes.NsxNodeAgentDsName {
-		return &appsv1.DaemonSet{}
-	} else {
-		return &appsv1.Deployment{}
-	}
 }
 
 func (r *ReconcilePod) identifyAndGetK8SObjToCreate(resName string) *unstructured.Unstructured {
@@ -276,19 +262,6 @@ func (r *ReconcilePod) identifyAndGetK8SObjToCreate(resName string) *unstructure
 	} else {
 		return r.sharedInfo.NsxNcpDeploymentSpec.DeepCopy()
 	}
-}
-
-func (r *ReconcilePod) checkIfK8sResourceExists(
-	instance runtime.Object,
-	instanceDetails types.NamespacedName) (bool, error) {
-	err := r.client.Get(context.TODO(), instanceDetails, instance)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
 }
 
 func (adaptor *PodK8s) setControllerReference(r *ReconcilePod, obj *unstructured.Unstructured) error {
