@@ -61,9 +61,10 @@ Create manifest files:
 ```
 $ openshift-install --dir=MY_CLUSTER create manifests
 ```
-Put operator yaml files from `deploy/openshift4/` to `MY_CLUSTER/manifests`,
+Copy operator yaml files from `deploy/openshift4/` to `MY_CLUSTER/manifests`,
 edit configmap.yaml about operator configurations, add the operator image and
-NCP image in operator.yaml.
+NCP image in operator.yaml. Note `deploy/openshift4/nsx-ipi-helper.yaml` is only
+for IPI, if you are using UPI please don't copy it.
 
 Generate ignition configuration files:
 ```

@@ -1,0 +1,58 @@
+# nsx-ipi-helper DaemonSet
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nsx-ipi-helper
+  namespace: nsx-system-operator
+spec:
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      name: nsx-ipi-helper
+  template:
+    metadata:
+      labels:
+        name: nsx-ipi-helper
+    spec:
+      hostNetwork: true
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          effect: NoSchedule
+        - key: node.kubernetes.io/not-ready
+          effect: NoSchedule
+        - key: node.kubernetes.io/unreachable
+          effect: NoSchedule
+      nodeSelector:
+        node-role.kubernetes.io/master: ""
+      volumes:
+        - name: host-manifests
+          hostPath:
+            path: "/etc/kubernetes/manifests"
+      initContainers:
+        - name: nsx-ipi-helper
+          image: registry.access.redhat.com/ubi8/ubi:latest
+          imagePullPolicy: IfNotPresent
+          command:
+          - bin/bash
+          - -c
+          - |
+            while true; do
+              sed -i "s/-f \/etc\/keepalived\/keepalived.conf/-f \/etc\/keepalived\/fake_keepalived.conf/" /etc/kubernetes/manifests/keepalived.yaml && echo `date` Temporarily disabled keepalived
+              if /usr/bin/curl -kLfs https://localhost:6443/readyz; then
+                sed -i "s/fake_keepalived.conf/keepalived.conf/" /etc/kubernetes/manifests/keepalived.yaml
+                echo `date` Restored the keepalived in localhost
+                exit 0
+              fi
+              sleep 1
+            done
+          volumeMounts:
+            - name: host-manifests
+              mountPath: "/etc/kubernetes/manifests"
+          securityContext:
+            privileged: true
+      containers:
+        - name: nsx-ipi-dummy
+          image: registry.access.redhat.com/ubi8/ubi:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "-c", "while true; do sleep 5; done"]
