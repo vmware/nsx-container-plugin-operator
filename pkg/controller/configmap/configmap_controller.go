@@ -27,9 +27,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
@@ -61,6 +63,28 @@ func newReconciler(mgr manager.Manager, status *statusmanager.StatusManager, sha
 	return &reconcileConfigMap
 }
 
+// Create a Predicate with filter function used by Controllers to filter Events before they are provided to EventHandlers.
+// Only event objects matching the watchNameSpace will be selected, otherwise filtered out.
+func byNameSpaceFilter(watchNameSpace string) predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return (e.Meta.GetNamespace() == watchNameSpace)
+		},
+
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return (e.Meta.GetNamespace() == watchNameSpace)
+		},
+
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return (e.MetaNew.GetNamespace() == watchNameSpace)
+		},
+
+		GenericFunc: func(e event.GenericEvent) bool {
+			return (e.Meta.GetNamespace() == watchNameSpace)
+		},
+	}
+}
+
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
 func add(mgr manager.Manager, sharedInfo *sharedinfo.SharedInfo, r reconcile.Reconciler) error {
 	// Create a new controller
@@ -69,14 +93,29 @@ func add(mgr manager.Manager, sharedInfo *sharedinfo.SharedInfo, r reconcile.Rec
 		return err
 	}
 
+	reconcileConfigMap, ok := r.(*ReconcileConfigMap)
+	if !ok {
+		log.Info("Reconciler Interface to ReconcileConfigMap failed")
+		return nil
+	}
+
+	watchedNamespace := reconcileConfigMap.status.OperatorNamespace
+	if watchedNamespace == "" {
+		// For NcpInstall, ConfigMap and Secret, we only want to watch a single namespace
+		// Pass watchedNamespace into controller Watch func to filer out unexpected namespace changes.
+		watchedNamespace = operatortypes.OperatorNamespace
+	}
+
 	// Watch for changes to primary resource NcpInstall CRD
-	err = c.Watch(&source.Kind{Type: &operatorv1.NcpInstall{}}, &handler.EnqueueRequestForObject{})
+	// The NcpInstall CRD changes may appear in mutiple namespaces, only changes from watched namespace of operator will be queued for handler
+	err = c.Watch(&source.Kind{Type: &operatorv1.NcpInstall{}}, &handler.EnqueueRequestForObject{}, byNameSpaceFilter(watchedNamespace))
 	if err != nil {
 		return err
 	}
 
 	// Watch for changes to primary resource ConfigMap
-	err = c.Watch(&source.Kind{Type: &corev1.ConfigMap{}}, &handler.EnqueueRequestForObject{})
+	// The configmap resource changes may appear in mutiple namespaces, only changes from watched namespace of operator will be queued for handler
+	err = c.Watch(&source.Kind{Type: &corev1.ConfigMap{}}, &handler.EnqueueRequestForObject{}, byNameSpaceFilter(watchedNamespace))
 	if err != nil {
 		return err
 	}
@@ -92,7 +131,8 @@ func add(mgr manager.Manager, sharedInfo *sharedinfo.SharedInfo, r reconcile.Rec
 	}
 
 	// Watch for changes to primary resource Secret
-	err = c.Watch(&source.Kind{Type: &corev1.Secret{}}, &handler.EnqueueRequestForObject{})
+	// The Secret resouce changes may appear in mutiple namespaces, only changes from watched namespace of operator will be queued for handler
+	err = c.Watch(&source.Kind{Type: &corev1.Secret{}}, &handler.EnqueueRequestForObject{}, byNameSpaceFilter(watchedNamespace))
 	if err != nil {
 		return err
 	}
@@ -139,7 +179,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			operatortypes.OperatorNamespace))
 		watchedNamespace = operatortypes.OperatorNamespace
 	}
-	log.Info(fmt.Sprintf("configmap controller watching events in namespace %s", watchedNamespace))
+
 	if request.Namespace == watchedNamespace {
 		if request.Name == operatortypes.ConfigMapName {
 			reqLogger.Info("Reconciling nsx-ncp-operator ConfigMap change")
@@ -156,6 +196,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	} else if request.Namespace == "" && request.Name == operatortypes.NetworkCRDName {
 		reqLogger.Info("Reconciling cluster Network CRD change")
 	} else {
+		log.V(4).Info(fmt.Sprintf("Received change from unexpected namespace: %s", request.Namespace))
 		return reconcile.Result{}, nil
 	}
 
