@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-network-operator/pkg/apply"
@@ -41,11 +40,6 @@ var log = logf.Log.WithName("controller_pod")
 var SetControllerReference = controllerutil.SetControllerReference
 
 var ApplyObject = apply.ApplyObject
-
-// The periodic resync interval.
-// We will re-run the reconciliation logic, even if the NCP configuration
-// hasn't changed.
-var ResyncPeriod = 2 * time.Minute
 
 var firstBoot = true
 
@@ -189,15 +183,17 @@ func (r *ReconcilePod) isForNsxNodeAgentPod(request reconcile.Request) bool {
 func (r *ReconcilePod) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
-	if err := r.status.CheckExistingAgentPods(&firstBoot, r.sharedInfo); err != nil {
-		return reconcile.Result{Requeue: true}, err
+	result, err := r.status.CheckExistingAgentPods(&firstBoot, r.sharedInfo)
+	emptyResult := reconcile.Result{}
+	if result != emptyResult || err != nil {
+		return result, err
 	}
 
 	if !r.isForNcpDeployOrNodeAgentDS(request) {
 		// the request is not for ncp deployement or nsx-node-agent ds, but for nsx-node-agent pod
 		if r.isForNsxNodeAgentPod(request) {
 			reqLogger.Info("Reconciling pod update for network status")
-			r.status.SetNodeConditionFromPod(request.NamespacedName, r.sharedInfo, nil)
+			return r.status.SetNodeConditionFromPod(request.NamespacedName, r.sharedInfo, nil)
 		}
 		return reconcile.Result{}, nil
 	}
@@ -216,7 +212,7 @@ func (r *ReconcilePod) Reconcile(request reconcile.Request) (reconcile.Result, e
 		}
 	}
 
-	return reconcile.Result{RequeueAfter: ResyncPeriod}, nil
+	return reconcile.Result{RequeueAfter: operatortypes.DefaultResyncPeriod}, nil
 }
 
 func (r *ReconcilePod) recreateNsxNcpResourceIfDeleted(resName string) error {

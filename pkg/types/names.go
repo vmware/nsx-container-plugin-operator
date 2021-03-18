@@ -36,4 +36,5 @@ const (
 	NsxNodeAgentContainerName    string         = "nsx-node-agent"
 	OsReleaseFile                string         = "/host/etc/os-release"
 	TimeBeforeRecoverNetwork     time.Duration  = 180 * time.Second
+	DefaultResyncPeriod          time.Duration  = 2 * time.Minute
 )

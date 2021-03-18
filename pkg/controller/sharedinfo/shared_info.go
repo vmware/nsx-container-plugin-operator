@@ -26,7 +26,6 @@ var log = logf.Log.WithName("shared_info")
 type SharedInfo struct {
 	AdaptorName               string
 	AddNodeTag                bool
-	LastNetworkAvailable      map[string]time.Time
 	LastNodeAgentStartTime    map[string]time.Time
 	NetworkConfig             *configv1.Network
 	OperatorConfigMap         *corev1.ConfigMap
