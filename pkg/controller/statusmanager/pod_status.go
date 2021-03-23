@@ -98,7 +98,7 @@ func SetNodeCondition(conditions *[]corev1.NodeCondition, newCondition corev1.No
 // CheckExistingAgentPods is for a case: nsx-node-agent becomes unhealthy -> NetworkUnavailable=True -> operator off ->
 // nsx-node-agent becomes healthy and keeps running -> operator up -> operator cannot receive nsx-node-agent event to
 // set NetworkUnavailable=False. So a full sync at the start time is necessary.
-func (status *StatusManager) CheckExistingAgentPods (firstBoot *bool, sharedInfo *sharedinfo.SharedInfo) error {
+func (status *StatusManager) CheckExistingAgentPods(firstBoot *bool, sharedInfo *sharedinfo.SharedInfo) error {
 	status.Lock()
 	defer status.Unlock()
 
@@ -213,7 +213,6 @@ func (status *StatusManager) updateNodeStatus(nodeName string, ready bool, reaso
 	}
 }
 
-
 // Get the pod status from API server
 func (status *StatusManager) SetNodeConditionFromPod(podName types.NamespacedName, sharedInfo *sharedinfo.SharedInfo, pod *corev1.Pod) {
 	status.Lock()
@@ -247,13 +246,16 @@ func (status *StatusManager) setNodeConditionFromPod(podName types.NamespacedNam
 	// received the outdated pot event after the new pod running. For this case
 	// we should ignore the outdated event, otherwise, the operator may mistakenly
 	// set the NetworkUnavailbe status.
-	podStartedAt := pod.Status.StartTime.Time
-	nodeLastStartedAt := sharedInfo.LastNodeAgentStartTime[nodeName]
-	if podStartedAt.Before(nodeLastStartedAt) {
-		log.Info("Pod %s started at %v on node %s is outdated, there's new pod started at %v", podStartedAt, podName, nodeName, nodeLastStartedAt)
-		return
-	} else {
-		sharedInfo.LastNodeAgentStartTime[nodeName] = podStartedAt
+	// StartTime field will not be set until pod is initilized in pending state
+	if (pod.Status.StartTime != nil) {
+		podStartedAt := pod.Status.StartTime.Time
+		nodeLastStartedAt := sharedInfo.LastNodeAgentStartTime[nodeName]
+		if podStartedAt.Before(nodeLastStartedAt) {
+			log.Info(fmt.Sprintf("Pod %s started at %v on node %s is outdated, there's new pod started at %v", podStartedAt, podName, nodeName, nodeLastStartedAt))
+			return
+		} else {
+			sharedInfo.LastNodeAgentStartTime[nodeName] = podStartedAt
+		}
 	}
 
 	// when pod is pending, its ContainerStatuses is empty
