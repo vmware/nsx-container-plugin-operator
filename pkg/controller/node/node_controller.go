@@ -6,6 +6,7 @@ package node
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"crypto/tls"
@@ -114,7 +115,7 @@ var cachedNodeSet = map[string](*statusmanager.NodeStatus){}
 func getNodeExternalIdByProviderId(nsxClients *NsxClients, nodeName string, providerId string) (string, error) {
 	// providerId has the following format: vsphere://<uuid>
 	if len(providerId) != 46 {
-		return "", errors.Errorf("Invalid provider ID %s of node %s", providerId, nodeName)
+		return "", errors.Errorf("invalid provider ID %s of node %s", providerId, nodeName)
 	}
 	providerId = string([]byte(providerId)[10:])
 	nsxClient := nsxClients.ManagerClient
@@ -130,7 +131,7 @@ func getNodeExternalIdByProviderId(nsxClients *NsxClients, nodeName string, prov
 			}
 		}
 	}
-	return "", errors.Errorf("No virtual machine matches provider ID %s and hostname %s", providerId, nodeName)
+	return "", errors.Errorf("no virtual machine matches provider ID %s and hostname %s", providerId, nodeName)
 }
 
 func listAttachmentsByNodeExternalId(nsxClients *NsxClients, vmExternalId string) ([]string, error) {
@@ -177,26 +178,46 @@ func listPortsByAttachmentIds(nsxClients *NsxClients, attachmentIds []string) (*
 	return &portList, nil
 }
 
-func filterPortByNodeAddress(nsxClients *NsxClients, ports *[]nsxtmgr.LogicalPort, nodeAddress string) (*nsxtmgr.LogicalPort, error) {
-	log.Info(fmt.Sprintf("Found %d ports for node %s, checking addresses", len(*ports), nodeAddress))
+func inSlice(str string, s []string) bool {
+	for _, v := range s {
+		if str == v {
+			return true
+		}
+	}
+	return false
+}
+
+func filterPortsByNodeAddresses(nsxClients *NsxClients, ports *[]nsxtmgr.LogicalPort, nodeAddresses []string) ([]*nsxtmgr.LogicalPort, error) {
+	var filteredPorts []*nsxtmgr.LogicalPort
+	log.Info(fmt.Sprintf("Found %d ports for node, checking addresses %v", len(*ports), nodeAddresses))
 	nsxClient := nsxClients.ManagerClient
 	for _, port := range *ports {
 		logicalPort, _, err := nsxClient.LogicalSwitchingApi.GetLogicalPortState(nsxClient.Context, port.Id)
 		if err != nil {
-			return nil, err
+			return filteredPorts, err
 		}
 		if len(logicalPort.RealizedBindings) == 0 {
 			continue
 		}
+		var collectedAddresses []string
 		for _, realizedBinding := range logicalPort.RealizedBindings {
 			address := realizedBinding.Binding.IpAddress
-			if address == nodeAddress {
-				return &port, nil
+			if inSlice(address, nodeAddresses) && !inSlice(address, collectedAddresses) {
+				log.Info(fmt.Sprintf("Node address %s matches port %s", address, port.Id))
+				// The addresses in logicalPort.RealizedBindings may be duplicate so we use collectedAddresses to ensure the uniqueness in filteredPorts.
+				collectedAddresses = append(collectedAddresses, address)
+				filteredPorts = append(filteredPorts, &port)
 			}
 		}
 	}
-	return nil, errors.Errorf("No port matches address %s", nodeAddress)
-
+	var err error
+	lspCount := len(filteredPorts)
+	if lspCount == 0 {
+		err = errors.Errorf("no port matches addresses %v", nodeAddresses)
+	} else if lspCount > 1 {
+		err = errors.Errorf("error while search logical port for addresses %v, expecting 1, got %d", nodeAddresses, lspCount)
+	}
+	return filteredPorts, err
 }
 
 func searchNodePortByVcNameAddress(nsxClients *NsxClients, nodeName string, nodeAddress string) (*model.SegmentPort, error) {
@@ -212,12 +233,12 @@ func searchNodePortByVcNameAddress(nsxClients *NsxClients, nodeName string, node
 		return nil, err
 	}
 	if len(ports.Results) == 0 {
-		return nil, errors.Errorf("Segment port for node %s not found", nodeName)
+		return nil, errors.Errorf("segment port for node %s not found", nodeName)
 	}
 	portIndex := 0
 	portIndex, err = filterSegmentPorts(nsxClients, ports.Results, nodeName, nodeAddress)
 	if err != nil {
-		return nil, errors.Errorf("Found %d segment ports for node %s, but none with address %s: %s", len(ports.Results), nodeName, nodeAddress, err)
+		return nil, errors.Errorf("found %d segment ports for node %s, but none with address %s: %s", len(ports.Results), nodeName, nodeAddress, err)
 	}
 	portId, err := ports.Results[portIndex].Field("id")
 	if err != nil {
@@ -259,7 +280,7 @@ func filterSegmentPorts(nsxClients *NsxClients, ports []*data.StructValue, nodeN
 			return idx, nil
 		}
 	}
-	return -1, errors.Errorf("No port matches")
+	return -1, errors.Errorf("no port matches")
 }
 
 func getConnectorTLSConfig(insecure bool, clientCertFile string, clientKeyFile string, caFile string) (*tls.Config, error) {
@@ -324,7 +345,7 @@ func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 		}
 	}
 	if configMap == nil {
-		return nil, errors.Errorf("Failed to get NSX config from operator ConfigMap")
+		return nil, errors.Errorf("failed to get NSX config from operator ConfigMap")
 	}
 	data := configMap.Data
 	cfg, err := ini.Load([]byte(data[operatortypes.ConfigMapDataKey]))
@@ -379,7 +400,7 @@ func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 		log.Info("Using cert and private key to connect to NSX")
 	} else {
 		if len(user) == 0 {
-			return nil, errors.Errorf("No credentials for NSX authentication supplied")
+			return nil, errors.Errorf("no credentials for NSX authentication supplied")
 		} else {
 			securityCtx := core.NewSecurityContextImpl()
 			securityCtx.SetProperty(security.AUTHENTICATION_SCHEME_ID, security.USER_PASSWORD_SCHEME_ID)
@@ -393,7 +414,7 @@ func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 	// policy client
 	tlsConfig, err := getConnectorTLSConfig(insecure, tmpCertPath, tmpKeyPath, tmpCAPath)
 	if err != nil {
-		return nil, errors.Errorf("Error while achieving tls config: %v", err)
+		return nil, errors.Errorf("error while achieving tls config: %v", err)
 	}
 
 	tr := &http.Transport{
@@ -477,19 +498,15 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 		return reconcile.Result{}, err
 	}
 
-	nodeAddresses := instance.Status.Addresses
-	var nodeAddress string
-	// TODO: An example for the nodeAddresses is:
-	// [{ExternalIP 192.168.10.38} {InternalIP 192.168.10.38} {Hostname compute-0}]"}
-	// Need to confirm if it's possible to have multiple ExternalIPs and handle that case
-	reqLogger.Info("Got the node address info", "nodeAddresses", nodeAddresses)
-	for _, address := range nodeAddresses {
-		if address.Type == "ExternalIP" {
-			nodeAddress = address.Address
-			break
+	nodeAddressesWithType := instance.Status.Addresses
+	var nodeAddresses []string
+	reqLogger.Info("Got the node addresses info", "nodeAddresses", nodeAddressesWithType)
+	for _, address := range nodeAddressesWithType {
+		if !inSlice(address.Address, nodeAddresses) {
+			nodeAddresses = append(nodeAddresses, address.Address)
 		}
 	}
-	if cachedNodeSet[nodeName] != nil && cachedNodeSet[nodeName].Address == nodeAddress && cachedNodeSet[nodeName].Success {
+	if cachedNodeSet[nodeName] != nil && reflect.DeepEqual(cachedNodeSet[nodeName].Addresses, nodeAddresses) && cachedNodeSet[nodeName].Success {
 		// TODO: consider the corner case that node port is changed but the address is not changed
 		reqLogger.Info("Skip reconcile: node was processed")
 		return reconcile.Result{}, nil
@@ -498,7 +515,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	nsxClients, err := r.createNsxClients()
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
-			Address: nodeAddress,
+			Addresses: nodeAddresses,
 			Success: false,
 			Reason:  fmt.Sprintf("Failed to create NSX config for node %s: %v", nodeName, err),
 		}
@@ -511,7 +528,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	nodeExternalId, err := getNodeExternalIdByProviderId(nsxClients, nodeName, providerId)
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
-			Address: nodeAddress,
+			Addresses: nodeAddresses,
 			Success: false,
 			Reason:  fmt.Sprintf("Error while achieving external id for node %s: %v", nodeName, err),
 		}
@@ -521,7 +538,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	attachment_ids, err := listAttachmentsByNodeExternalId(nsxClients, nodeExternalId)
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
-			Address: nodeAddress,
+			Addresses: nodeAddresses,
 			Success: false,
 			Reason:  fmt.Sprintf("Error while achieving attachment ids for node %s: %v", nodeName, err),
 		}
@@ -531,73 +548,73 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	portList, err := listPortsByAttachmentIds(nsxClients, attachment_ids)
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
-			Address: nodeAddress,
+			Addresses: nodeAddresses,
 			Success: false,
 			Reason:  fmt.Sprintf("Error while achieving ports for node %s: %v", nodeName, err),
 		}
 		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
 	}
-	lsp, err := filterPortByNodeAddress(nsxClients, portList, nodeAddress)
+	lsps, err := filterPortsByNodeAddresses(nsxClients, portList, nodeAddresses)
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
-			Address: nodeAddress,
+			Addresses: nodeAddresses,
 			Success: false,
 			Reason:  fmt.Sprintf("Error while achieving port with specific address for node %s: %v", nodeName, err),
 		}
 		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
 	}
-	reqLogger.Info("Got the port", "port.Id", lsp.Id, "cluster", cluster)
-
-	foundNodeTag := false
-	foundClusterTag := false
 	nodeNameScope := "ncp/node_name"
 	clusterScope := "ncp/cluster"
-	for _, tag := range lsp.Tags {
-		if tag.Scope == nodeNameScope && tag.Tag == request.Name {
-			foundNodeTag = true
-		} else if tag.Scope == clusterScope && tag.Tag == cluster {
-			foundClusterTag = true
+	anyUpdate := false
+	for _, lsp := range(lsps) {
+		foundNodeTag := false
+		foundClusterTag := false
+		for _, tag := range lsp.Tags {
+			if tag.Scope == nodeNameScope && tag.Tag == request.Name {
+				foundNodeTag = true
+			} else if tag.Scope == clusterScope && tag.Tag == cluster {
+				foundClusterTag = true
+			}
 		}
-	}
-	if foundNodeTag == true && foundClusterTag == true {
-		reqLogger.Info("Skip reconcile: node port was tagged")
-		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
-			Address: nodeAddress,
-			Success: true,
-			Reason:  "",
+		if foundNodeTag == true && foundClusterTag == true {
+			reqLogger.Info("Node port had been tagged", "port.Id", lsp.Id)
+			continue
 		}
-		r.status.SetFromNodes(cachedNodeSet)
-		return reconcile.Result{}, err
-	}
-	reqLogger.Info("Updating node tag for port", "port.Id", lsp.Id)
-	if foundNodeTag == false {
-		var nodeTag = common.Tag{Scope: nodeNameScope, Tag: request.Name}
-		lsp.Tags = append(lsp.Tags, nodeTag)
-	}
-	if foundClusterTag == false {
-		var clusterTag = common.Tag{Scope: clusterScope, Tag: cluster}
-		lsp.Tags = append(lsp.Tags, clusterTag)
-	}
-	nsxClient := nsxClients.ManagerClient
-	_, _, err = nsxClient.LogicalSwitchingApi.UpdateLogicalPort(nsxClient.Context, lsp.Id, *lsp)
+		reqLogger.Info("Updating node tag for port", "port.Id", lsp.Id)
+		if foundNodeTag == false {
+			var nodeTag = common.Tag{Scope: nodeNameScope, Tag: request.Name}
+			lsp.Tags = append(lsp.Tags, nodeTag)
+		}
+		if foundClusterTag == false {
+			var clusterTag = common.Tag{Scope: clusterScope, Tag: cluster}
+			lsp.Tags = append(lsp.Tags, clusterTag)
+		}
+		nsxClient := nsxClients.ManagerClient
+		_, _, err = nsxClient.LogicalSwitchingApi.UpdateLogicalPort(nsxClient.Context, lsp.Id, *lsp)
+		anyUpdate = true
+		if err != nil {
+			cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
+				Addresses: nodeAddresses,
+				Success: false,
+				Reason:  fmt.Sprintf("Failed to update port %s for node %s: %v", lsp.Id, nodeName, err),
+			}
+			r.status.SetFromNodes(cachedNodeSet)
+			return reconcile.Result{}, err
+		}
 
-	if err != nil {
-		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
-			Address: nodeAddress,
-			Success: false,
-			Reason:  fmt.Sprintf("Failed to update port %s for node %s: %v", lsp.Id, nodeName, err),
-		}
-		r.status.SetFromNodes(cachedNodeSet)
-		return reconcile.Result{}, err
 	}
 	cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
-		Address: nodeAddress,
+		Addresses: nodeAddresses,
 		Success: true,
 		Reason:  "",
 	}
 	r.status.SetFromNodes(cachedNodeSet)
-	reqLogger.Info("Successfully updated tags on port", "port.Id", lsp.Id)
+	if !anyUpdate {
+		reqLogger.Info("All node ports already had been tagged")
+	} else {
+		reqLogger.Info("Successfully updated tags on ports", "ports", lsps)
+	}
 	return reconcile.Result{}, nil
 }
