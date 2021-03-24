@@ -588,7 +588,7 @@ func (r *ReconcileConfigMap) isSecretChanged(opNsxSecret *corev1.Secret, opLbSec
 		}
 		ncpNsxSecret = nil
 	}
-	nsxSecretChanged := secretEqual(opNsxSecret, ncpNsxSecret)
+	nsxSecretChanged := secretNotEqual(opNsxSecret, ncpNsxSecret)
 	if nsxSecretChanged {
 		log.Info("nsx-secret is changed")
 		return true, nil
@@ -603,7 +603,7 @@ func (r *ReconcileConfigMap) isSecretChanged(opNsxSecret *corev1.Secret, opLbSec
 		}
 		ncpLbSecret = nil
 	}
-	lbSecretChanged := secretEqual(opLbSecret, ncpLbSecret)
+	lbSecretChanged := secretNotEqual(opLbSecret, ncpLbSecret)
 	if lbSecretChanged {
 		log.Info("lb-secret is changed")
 		return true, nil
@@ -611,7 +611,7 @@ func (r *ReconcileConfigMap) isSecretChanged(opNsxSecret *corev1.Secret, opLbSec
 	return false, nil
 }
 
-func secretEqual(s1 *corev1.Secret, s2 *corev1.Secret) bool {
+func secretNotEqual(s1 *corev1.Secret, s2 *corev1.Secret) bool {
 	if s1 != nil && s2 != nil {
 		if !reflect.DeepEqual(s1.Data, s2.Data) {
 			return true
