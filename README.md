@@ -28,10 +28,20 @@ the `network.config.openshift.io` CR to update the container network CIDRs used 
 
 ## Try it out
 
-### Build
+### Pull or Build Image
+
+Pull the packed image for docker:
+```
+docker pull vmware/nsx-container-plugin-operator:latest
+```
+
+For containerd:
+```
+ctr image pull docker.io/vmware/nsx-container-plugin-operator:latest
+```
 
 Building the nsx-container-plugin operator is very simple. From the project root
-directory simply type the following command.
+directory simply type the following command, which based on docker build tool.
 
 ```
 make all
