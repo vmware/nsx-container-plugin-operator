@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	client "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 var log = logf.Log.WithName("status_manager")
@@ -64,7 +65,7 @@ type deploymentState struct {
 	LastChangeTime time.Time
 }
 
-func FindStatusCondition(conditions []corev1.NodeCondition, conditionType corev1.NodeConditionType) *corev1.NodeCondition {
+func FindNodeStatusCondition(conditions []corev1.NodeCondition, conditionType corev1.NodeConditionType) *corev1.NodeCondition {
 	for i := range conditions {
 		if conditions[i].Type == conditionType {
 			return &conditions[i]
@@ -78,7 +79,7 @@ func SetNodeCondition(conditions *[]corev1.NodeCondition, newCondition corev1.No
 	if conditions == nil {
 		conditions = &[]corev1.NodeCondition{}
 	}
-	existingCondition := FindStatusCondition(*conditions, newCondition.Type)
+	existingCondition := FindNodeStatusCondition(*conditions, newCondition.Type)
 	if existingCondition == nil {
 		newCondition.LastTransitionTime = metav1.NewTime(time.Now())
 		*conditions = append(*conditions, newCondition)
@@ -98,19 +99,19 @@ func SetNodeCondition(conditions *[]corev1.NodeCondition, newCondition corev1.No
 // CheckExistingAgentPods is for a case: nsx-node-agent becomes unhealthy -> NetworkUnavailable=True -> operator off ->
 // nsx-node-agent becomes healthy and keeps running -> operator up -> operator cannot receive nsx-node-agent event to
 // set NetworkUnavailable=False. So a full sync at the start time is necessary.
-func (status *StatusManager) CheckExistingAgentPods(firstBoot *bool, sharedInfo *sharedinfo.SharedInfo) error {
+func (status *StatusManager) CheckExistingAgentPods(firstBoot *bool, sharedInfo *sharedinfo.SharedInfo) (reconcile.Result, error) {
 	status.Lock()
 	defer status.Unlock()
 
 	if !*firstBoot {
-		return nil
+		return reconcile.Result{}, nil
 	}
 	log.Info("Checking all nsx-node-agent pods for node condition")
 	pods := &corev1.PodList{}
 	err := status.client.List(context.TODO(), pods, client.MatchingLabels{"component": operatortypes.NsxNodeAgentContainerName})
 	if err != nil {
 		log.Error(err, "Error getting pods for node condition")
-		return err
+		return reconcile.Result{}, err
 	}
 	if len(pods.Items) == 0 {
 		log.Info("nsx-node-agent not found for node condition")
@@ -118,57 +119,76 @@ func (status *StatusManager) CheckExistingAgentPods(firstBoot *bool, sharedInfo 
 		err = status.client.List(context.TODO(), &nodes)
 		if err != nil {
 			log.Error(err, "Failed to get nodes for condition updating")
-			return err
+			return reconcile.Result{}, err
 		}
 		for _, node := range nodes.Items {
-			status.setNodeNetworkUnavailable(node.ObjectMeta.Name, false, nil, "NSXNodeAgent", "Waiting for nsx-node-agent to be created", sharedInfo)
+			// In this case the nsx-node-agent is not created yet so we don't need to care about the graceful time
+			_, err := status.setNodeNetworkUnavailable(node.ObjectMeta.Name, false, nil, "NSXNodeAgent", "Waiting for nsx-node-agent to be created", sharedInfo)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
 		}
 		*firstBoot = false
-		return nil
+		return reconcile.Result{}, nil
 	}
 	podName := types.NamespacedName{}
 	for _, pod := range pods.Items {
-		status.setNodeConditionFromPod(podName, sharedInfo, &pod)
+		if _, err := status.setNodeConditionFromPod(podName, sharedInfo, &pod); err != nil {
+			return reconcile.Result{}, err
+		}
 	}
 	*firstBoot = false
-	return nil
+	return reconcile.Result{}, nil
 }
 
-func (status *StatusManager) setNodeNetworkUnavailable(nodeName string, ready bool, startedAt *time.Time, reason string, message string, sharedInfo *sharedinfo.SharedInfo) {
-	if sharedInfo.LastNetworkAvailable == nil {
-		sharedInfo.LastNetworkAvailable = make(map[string]time.Time)
+// assertNodeStatus helps you write controller with the assumption that information will eventually be correct, but may be slightly out of date.
+// And assume that they need to be repeated if they don't occur after a given time (e.g. using a requeue result).
+// More details refer to https://github.com/kubernetes-sigs/controller-runtime/blob/v0.5.2/FAQ.md#q-my-cache-might-be-stale-if-i-read-from-a-cache-how-should-i-deal-with-that
+func (status *StatusManager) assertNodeStatus(nodeName string, desireReady bool) (reconcile.Result, error) {
+	node := &corev1.Node{}
+	err := status.client.Get(context.TODO(), types.NamespacedName{Name: nodeName}, node)
+	if err != nil {
+		log.Error(err, fmt.Sprintf("Failed to check status updating for node %s", nodeName))
+		return reconcile.Result{}, err
 	}
-	if ready {
-		log.V(1).Info(fmt.Sprintf("Last network unavailable time of node %s is set to %s", nodeName, *startedAt))
-		sharedInfo.LastNetworkAvailable[nodeName] = *startedAt
+	existingCondition := FindNodeStatusCondition(node.Status.Conditions, "NetworkUnavailable")
+	if existingCondition == nil {
+		log.Info(fmt.Sprintf("Expecting node %s ready=%v, observed nil", nodeName, desireReady))
+	} else if desireReady && existingCondition.Status != corev1.ConditionFalse {
+		log.Info(fmt.Sprintf("Expecting node %s ready=true, observed false", nodeName))
+	} else if !desireReady && existingCondition.Status == corev1.ConditionFalse {
+		log.Info(fmt.Sprintf("Expecting node %s ready=false, observed true", nodeName))
 	} else {
-		delete(sharedInfo.LastNetworkAvailable, nodeName)
+		return reconcile.Result{}, nil
 	}
-	_, changed := status.combineNode(nodeName, ready, reason, message)
-	if !changed {
-		log.Info("Node condition is not changed")
-		return
-	}
-	log.Info(fmt.Sprintf("Setting status NetworkUnavailable to %v for node %s", !ready, nodeName))
+	return reconcile.Result{RequeueAfter: operatortypes.DefaultResyncPeriod}, nil
+}
+
+func (status *StatusManager) setNodeNetworkUnavailable(nodeName string, ready bool, startedAt *time.Time, reason string, message string, sharedInfo *sharedinfo.SharedInfo) (reconcile.Result, error) {
+	log.V(1).Info(fmt.Sprintf("Setting status NetworkUnavailable to %v for node %s", !ready, nodeName))
 	if !ready {
-		status.updateNodeStatus(nodeName, ready, reason, message)
-		return
+		err := status.updateNodeStatus(nodeName, ready, reason, message)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		return status.assertNodeStatus(nodeName, ready)
 	}
-	// When the network status looks ready, we still need to wait for a graceful time
+	// When the network status looks ready, we should check whether need to wait for a graceful time
 	now := time.Now()
 	startedTime := now.Sub(*startedAt)
-	go func() {
-		sleepTime := operatortypes.TimeBeforeRecoverNetwork - startedTime
-		time.Sleep(sleepTime)
-		if (sharedInfo.LastNetworkAvailable[nodeName]) != *startedAt {
-			log.V(1).Info(fmt.Sprintf("Last network unavailable time of node %s changed, expecting %v, got %v, goroutine exiting",
-				nodeName, *startedAt, sharedInfo.LastNetworkAvailable[nodeName]))
-			return
+	if startedTime >= operatortypes.TimeBeforeRecoverNetwork {
+		err := status.updateNodeStatus(nodeName, ready, reason, message)
+		if err != nil {
+			return reconcile.Result{}, err
 		}
-		log.Info(fmt.Sprintf("Setting status NetworkUnavailable to %v for node %s after %v", !ready, nodeName, sleepTime))
-		status.updateNodeStatus(nodeName, ready, reason, message)
-		return
-	}()
+		return status.assertNodeStatus(nodeName, ready)
+	}
+	if err := status.updateNodeStatus(nodeName, false, reason, message); err != nil {
+		return reconcile.Result{}, err
+	}
+	sleepTime := operatortypes.TimeBeforeRecoverNetwork - startedTime
+	log.V(1).Info(fmt.Sprintf("Waiting %v to double check network status for node %s", sleepTime, nodeName))
+	return reconcile.Result{RequeueAfter: sleepTime}, nil
 }
 
 func (status *StatusManager) combineNode(nodeName string, ready bool, reason string, message string) (*corev1.Node, bool) {
@@ -198,37 +218,40 @@ func (status *StatusManager) combineNode(nodeName string, ready bool, reason str
 	return node, changed
 }
 
-func (status *StatusManager) updateNodeStatus(nodeName string, ready bool, reason string, message string) {
+func (status *StatusManager) updateNodeStatus(nodeName string, ready bool, reason string, message string) error {
 	// need to retrieve the node info, otherwise, the update may fail because the node has been modified during monitor slept
 	node, changed := status.combineNode(nodeName, ready, reason, message)
 	if !changed {
-		log.Info("Node condition is not changed, skip updating")
-		return
+		log.V(1).Info(fmt.Sprintf("Node condition is not changed (nodeName: %s, reason: %s, message: %s), skip updating", nodeName, reason, message))
+		return nil
 	}
-	err := status.client.Status().Update(context.TODO(), node)
-	if err != nil {
+	if err := status.client.Status().Update(context.TODO(), node); err != nil {
 		log.Error(err, fmt.Sprintf("Failed to update node condition NetworkUnavailable to %v for node %s", !ready, nodeName))
-	} else {
-		log.Info(fmt.Sprintf("Updated node condition NetworkUnavailable to %v for node %s", !ready, nodeName))
+		return err
 	}
+	log.Info(fmt.Sprintf("Updated node condition NetworkUnavailable to %v for node %s", !ready, nodeName))
+	return nil
 }
 
 // Get the pod status from API server
-func (status *StatusManager) SetNodeConditionFromPod(podName types.NamespacedName, sharedInfo *sharedinfo.SharedInfo, pod *corev1.Pod) {
+func (status *StatusManager) SetNodeConditionFromPod(podName types.NamespacedName, sharedInfo *sharedinfo.SharedInfo, pod *corev1.Pod) (reconcile.Result, error) {
 	status.Lock()
 	defer status.Unlock()
-	status.setNodeConditionFromPod(podName, sharedInfo, pod)
+	return status.setNodeConditionFromPod(podName, sharedInfo, pod)
 }
 
-func (status *StatusManager) setNodeConditionFromPod(podName types.NamespacedName, sharedInfo *sharedinfo.SharedInfo, pod *corev1.Pod) {
+func (status *StatusManager) setNodeConditionFromPod(podName types.NamespacedName, sharedInfo *sharedinfo.SharedInfo, pod *corev1.Pod) (reconcile.Result, error) {
 	var reason string
 	now := time.Now()
 	if pod == nil {
 		pod = &corev1.Pod{}
-		err := status.client.Get(context.TODO(), podName, pod)
-		if err != nil {
+		if err := status.client.Get(context.TODO(), podName, pod); err != nil {
 			log.Error(err, fmt.Sprintf("Error getting %s for node condition", operatortypes.NsxNodeAgentContainerName))
-			return
+			isNotFound := errors.IsNotFound(err)
+			if isNotFound {
+				return reconcile.Result{}, nil
+			}
+			return reconcile.Result{}, err
 		}
 	}
 	containerStatus := corev1.ContainerStatus{}
@@ -237,6 +260,11 @@ func (status *StatusManager) setNodeConditionFromPod(podName types.NamespacedNam
 	// tmpMsgs is for the status that pod just restarted in a short time
 	var messages, tmpMsgs string
 	nodeName := pod.Spec.NodeName
+	if nodeName == "" {
+		// This case may occur during the early stage of pod pending, but not all pending pods don't have field spec.nodeName
+		log.Info(fmt.Sprintf("Pod %s has not been scheduled, skipping", podName))
+		return reconcile.Result{}, nil
+	}
 	var startedAt *time.Time
 	var lastStartedAt *time.Time
 	if sharedInfo.LastNodeAgentStartTime == nil {
@@ -252,7 +280,7 @@ func (status *StatusManager) setNodeConditionFromPod(podName types.NamespacedNam
 		nodeLastStartedAt := sharedInfo.LastNodeAgentStartTime[nodeName]
 		if podStartedAt.Before(nodeLastStartedAt) {
 			log.Info(fmt.Sprintf("Pod %s started at %v on node %s is outdated, there's new pod started at %v", podName, podStartedAt, nodeName, nodeLastStartedAt))
-			return
+			return reconcile.Result{}, nil
 		} else {
 			sharedInfo.LastNodeAgentStartTime[nodeName] = podStartedAt
 		}
@@ -303,13 +331,7 @@ func (status *StatusManager) setNodeConditionFromPod(podName types.NamespacedNam
 			}
 		}
 	}
-	if len(tmpMsgs) > 0 {
-		// if the pod just restarted, we still set the ready to false then try to set it to true,
-		// i.e. invoke the setNodeNetworkUnavailable 2 times because there's no sequent pod status change to
-		// trigger the pod controller to set ready to true.
-		status.setNodeNetworkUnavailable(nodeName, false, nil, "NSXNodeAgent", messages + tmpMsgs, sharedInfo)
-	}
-	status.setNodeNetworkUnavailable(nodeName, ready, lastStartedAt, "NSXNodeAgent", messages, sharedInfo)
+	return status.setNodeNetworkUnavailable(nodeName, ready, lastStartedAt, "NSXNodeAgent", messages + tmpMsgs, sharedInfo)
 }
 
 // SetFromPodsForOverall sets the operator Degraded/Progressing/Available status, based on
