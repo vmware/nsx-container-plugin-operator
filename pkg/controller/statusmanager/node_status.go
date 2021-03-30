@@ -9,9 +9,9 @@ import (
 )
 
 type NodeStatus struct {
-	Address string
-	Success bool
-	Reason  string
+	Addresses []string
+	Success   bool
+	Reason    string
 }
 
 func (status *StatusManager) SetFromNodes(cachedNodeSet map[string]*NodeStatus) {
