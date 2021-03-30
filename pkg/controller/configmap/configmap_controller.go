@@ -20,6 +20,7 @@ import (
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -137,6 +138,12 @@ func add(mgr manager.Manager, sharedInfo *sharedinfo.SharedInfo, r reconcile.Rec
 		return err
 	}
 
+	// Watch for changes to primary resource ClusterRole
+	err = c.Watch(&source.Kind{Type: &rbacv1.ClusterRole{}}, &handler.EnqueueRequestForObject{})
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -195,6 +202,10 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		}
 	} else if request.Namespace == "" && request.Name == operatortypes.NetworkCRDName {
 		reqLogger.Info("Reconciling cluster Network CRD change")
+	} else if request.Namespace == "" && request.Name == operatortypes.OperatorRoleName {
+		// The operator's ClusterRole/ClusterRoleBinding/ServiceAccount have the same name "nsx-ncp-operator",
+		// we only watch the ClusterRole.
+		reqLogger.Info("Reconciling nsx-ncp-operator ClusterRole change")
 	} else {
 		log.V(4).Info(fmt.Sprintf("Received change from unexpected namespace: %s", request.Namespace))
 		return reconcile.Result{}, nil
