@@ -4,10 +4,10 @@
 package configmap
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
-	"reflect"
 	"strconv"
 
 	configv1 "github.com/openshift/api/config/v1"
@@ -611,19 +611,26 @@ func (r *ReconcileConfigMap) isSecretChanged(opNsxSecret *corev1.Secret, opLbSec
 	return false, nil
 }
 
-func secretNotEqual(s1 *corev1.Secret, s2 *corev1.Secret) bool {
-	if s1 != nil && s2 != nil {
-		if !reflect.DeepEqual(s1.Data, s2.Data) {
-			return true
-		}
-	} else if s1 == nil && s2 != nil {
-		if !reflect.DeepEqual(s2.Data["tls.crt"], []byte{}) || !reflect.DeepEqual(s2.Data["tls.key"], []byte{}) {
-			return true
-		}
-	} else if s1 != nil && s2 == nil {
-		if !reflect.DeepEqual(s1.Data["tls.crt"], []byte{}) || !reflect.DeepEqual(s1.Data["tls.key"], []byte{}) {
-			return true
-		}
+func compareKey(s1 *corev1.Secret, s2 *corev1.Secret, key string) bool {
+	// This function returns true if the values for key in the two secrets s1 and s2 differ
+	// Consider missing keys as empty entries
+	s1Value := s1.Data[key]
+	s2Value := s2.Data[key]
+	if s1Value == nil {
+		s1Value = []byte{}
 	}
-	return false
+	if s2Value == nil {
+		s2Value = []byte{}
+	}
+	return bytes.Compare(s1Value, s2Value) != 0
+}
+
+func secretNotEqual(s1 *corev1.Secret, s2 *corev1.Secret) bool {
+	if s1 == nil {
+		s1 = &corev1.Secret{}
+	}
+	if s2 == nil {
+		s2 = &corev1.Secret{}
+	}
+	return compareKey(s1, s2, "tls.crt") || compareKey(s1, s2, "tls.key") || compareKey(s1, s2, "tls.ca")
 }
