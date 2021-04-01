@@ -132,13 +132,24 @@ func TestConfigMapController_isSecretChanged(t *testing.T) {
 	secretChanged, _ = r.isSecretChanged(nsxSecret, nil)
 	assert.True(t, secretChanged)
 
-	// Secret equal case
+	// Secret equal case, with missing key
 	secretChanged, _ = r.isSecretChanged(nsxSecret, lbSecret)
 	assert.False(t, secretChanged)
-
-	// Secret not equal case
+	// Secret equal, with empty key
 	mockSecret := &corev1.Secret{
+		Data: map[string][]byte{"tls.crt": mockValue, "tls.key": mockValue, "tls.ca": []byte{}},
+	}
+	secretChanged, _ = r.isSecretChanged(nsxSecret, mockSecret)
+	assert.False(t, secretChanged)
+	// Secret not equal case, with missing key
+	mockSecret = &corev1.Secret{
 		Data: map[string][]byte{"tls.crt": mockValue, "tls.key": []byte("key")},
+	}
+	secretChanged, _ = r.isSecretChanged(nsxSecret, mockSecret)
+	assert.True(t, secretChanged)
+	// Secret not equal, with all keys
+	mockSecret = &corev1.Secret{
+		Data: map[string][]byte{"tls.crt": mockValue, "tls.key": []byte("key"), "tls.ca": mockValue},
 	}
 	secretChanged, _ = r.isSecretChanged(nsxSecret, mockSecret)
 	assert.True(t, secretChanged)

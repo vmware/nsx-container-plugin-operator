@@ -806,8 +806,10 @@ spec:
                       path: nsx-cert/tls.crt
                     - key: tls.key
                       path: nsx-cert/tls.key
+{{if .NsxCA}}
                     - key: tls.ca
                       path: nsx-cert/tls.ca
+{{end}}
 
 
               - secret:

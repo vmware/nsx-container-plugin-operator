@@ -346,6 +346,8 @@ func Render(configmap *corev1.ConfigMap, ncpReplicas *int32, nsxSecret *corev1.S
 		// Render tls.ca only if specified
 		if tls_ca, found := nsxSecret.Data["tls.ca"]; found {
 			renderData.Data[operatortypes.NsxCARenderKey] = base64.StdEncoding.EncodeToString(tls_ca)
+		} else {
+			renderData.Data[operatortypes.NsxCARenderKey] = ""
 		}
 	} else {
 		renderData.Data[operatortypes.NsxCertRenderKey] = ""
