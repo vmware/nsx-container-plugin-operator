@@ -369,6 +369,15 @@ rules:
      - list
      - watch
 
+# NCP needs permission to use psp to patch pods when enabling psp
+
+ - apiGroups:
+   - policy
+   resources:
+   - podsecuritypolicies
+   verbs:
+   - use
+
 ---
 
 # Bind ServiceAccount created for NCP to its ClusterRole
@@ -498,6 +507,8 @@ spec:
   hostIPC: false
   hostPID: false
   privileged: false
+  allowedCapabilities:
+  - AUDIT_WRITE
   defaultAddCapabilities: null
   requiredDropCapabilities:
   - KILL
@@ -639,7 +650,7 @@ data:
 # Yaml template for NCP Deployment
 # Proper kubernetes API and NSX API parameters, and NCP Docker image
 # must be specified.
-# This yaml file is part of NCP 3.1.1 release.
+# This yaml file is part of NCP 3.1.2 release.
 
 # ConfigMap for ncp.ini
 apiVersion: v1
@@ -666,7 +677,7 @@ metadata:
   labels:
     version: v1
 data:
-  version: 3.1.1
+  version: 3.1.2
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -834,7 +845,7 @@ spec:
 # Yaml template for nsx-node-agent and nsx-kube-proxy DaemonSet
 # Proper kubernetes API parameters and NCP Docker image must be
 # specified.
-# This yaml file is part of NCP 3.1.1 release.
+# This yaml file is part of NCP 3.1.2 release.
 
 # ConfigMap for ncp.ini
 apiVersion: v1
