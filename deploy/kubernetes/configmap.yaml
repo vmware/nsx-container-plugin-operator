@@ -6,62 +6,6 @@ metadata:
 data:
   ncp.ini: |
 
-    [vc]
-
-    # IpAddress or Hostname of VC
-    #vc_endpoint = <None>
-
-    # The SSO domain associated with the deployment
-    #sso_domain = vsphere.local
-
-    # VC API server HTTPS port.
-    #https_port = 443
-
-
-    [coe]
-
-    # Container orchestrator adaptor to plug in.
-    adaptor = kubernetes
-
-    # Specify cluster for adaptor.
-    cluster = k8scl-one
-
-    # Log level for NCP operations
-    # Choices: NOTSET DEBUG INFO WARNING ERROR CRITICAL
-    #loglevel = <None>
-
-    # Log level for NSX API client operations
-    # Choices: NOTSET DEBUG INFO WARNING ERROR CRITICAL
-    #nsxlib_loglevel = <None>
-
-    # Enable SNAT for all projects in this cluster. Modification of topologies
-    # for existing Namespaces is not supported if this option is reset.
-    #enable_snat = True
-
-    # Option to enable profiling
-    #profiling = False
-
-    # The interval of reporting performance metrics (0 means disabled)
-    #metrics_interval = 0
-
-    # Name of log file for outputting metrics only (if not defined, use default
-    # logging facility)
-    #metrics_log_file = <None>
-
-    # The type of container host node
-    # Choices: HOSTVM BAREMETAL CLOUD WCP_WORKER
-    #node_type = HOSTVM
-
-    # The time in seconds for NCP/nsx_node_agent to recover the connection to
-    # NSX manager/container orchestrator adaptor/Hyperbus before exiting. If
-    # the value is 0, NCP/nsx_node_agent won't exit automatically when the
-    # connection check fails
-    #connect_retry_timeout = 0
-
-
-    # Enable system health status report for SHA
-    #enable_sha = True
-
 
     [DEFAULT]
 
@@ -119,6 +63,310 @@ data:
     #loglevel = <None>
 
 
+
+
+    [coe]
+
+    # Container orchestrator adaptor to plug in.
+    adaptor = kubernetes
+
+    # Specify cluster for adaptor.
+    #cluster = k8scluster
+
+    # Log level for NCP modules (controllers, services, etc.). Ignored if debug
+    # is True
+    # Choices: NOTSET DEBUG INFO WARNING ERROR CRITICAL
+    #loglevel = <None>
+
+    # Log level for NSX API client operations. Ignored if debug is True
+    # Choices: NOTSET DEBUG INFO WARNING ERROR CRITICAL
+    #nsxlib_loglevel = <None>
+
+    # Enable SNAT for all projects in this cluster. Modification of topologies
+    # for existing Namespaces is not supported if this option is reset.
+    #enable_snat = True
+
+    # Option to enable profiling
+    #profiling = False
+
+    # The interval of reporting performance metrics (0 means disabled)
+    #metrics_interval = 0
+
+    # Name of log file for outputting metrics only (if not defined, use default
+    # logging facility)
+    #metrics_log_file = <None>
+
+    # The type of container host node
+    # Choices: HOSTVM BAREMETAL CLOUD WCP_WORKER
+    #node_type = HOSTVM
+
+    # The time in seconds for NCP/nsx_node_agent to recover the connection to
+    # NSX manager/container orchestrator adaptor/Hyperbus before exiting. If
+    # the value is 0, NCP/nsx_node_agent won't exit automatically when the
+    # connection check fails
+    #connect_retry_timeout = 0
+
+
+    # Enable system health status report for SHA
+    #enable_sha = True
+
+
+    [ha]
+
+
+    # Time duration in seconds of mastership timeout. NCP instance will remain
+    # master for this duration after elected. Note that the heartbeat period
+    # plus the update timeout must not be greater than this period. This is
+    # done to ensure that the master instance will either confirm liveness or
+    # fail before the timeout.
+    #master_timeout = 18
+
+    # Time in seconds between heartbeats for elected leader. Once an NCP
+    # instance is elected master, it will periodically confirm liveness based
+    # on this value.
+    #heartbeat_period = 6
+
+    # Timeout duration in seconds for update to election resource. The default
+    # value is calculated by subtracting heartbeat period from master timeout.
+    # If the update request does not complete before the timeout it will be
+    # aborted. Used for master heartbeats to ensure that the update finishes or
+    # is aborted before the master timeout occurs.
+    #update_timeout = <None>
+
+
+    [k8s]
+
+    # Kubernetes API server IP address.
+    #apiserver_host_ip = <None>
+
+    # Kubernetes API server port.
+    #apiserver_host_port = <None>
+
+    # Full path of the Token file to use for authenticating with the k8s API
+    # server.
+    client_token_file = /var/run/secrets/kubernetes.io/serviceaccount/token
+
+    # Full path of the client certificate file to use for authenticating with
+    # the k8s API server. It must be specified together with
+    # "client_private_key_file".
+    #client_cert_file = <None>
+
+    # Full path of the client private key file to use for authenticating with
+    # the k8s API server. It must be specified together with
+    # "client_cert_file".
+    #client_private_key_file = <None>
+
+    # Specify a CA bundle file to use in verifying the k8s API server
+    # certificate.
+    ca_file = /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+
+    # Specify whether ingress controllers are expected to be deployed in
+    # hostnework mode or as regular pods externally accessed via NAT
+    # Choices: hostnetwork nat
+    #ingress_mode = hostnetwork
+
+    # Log level for the kubernetes adaptor. Ignored if debug is True
+    # Choices: NOTSET DEBUG INFO WARNING ERROR CRITICAL
+    #loglevel = <None>
+
+    # The default HTTP ingress port for non-NSX ingress controllers in NAT
+    # mode.
+    #http_ingress_port = 80
+
+    # The default HTTPS ingress port for non-NSX ingress controllers in NAT
+    # mode.
+    #https_ingress_port = 443
+
+    # Specifying whether the TCP connections between the LoadBalancer service
+    # and backend could be reused by multiple client requests.
+    #lb_connection_multiplexing_enabled = False
+
+    # Specifying the maximum number of multiplexing connections.
+    #lb_connection_multiplexing_number = 6
+
+
+    # Specify thread pool size to process resource events
+    #resource_watcher_thread_pool_size = 1
+
+    # User specified IP address for HTTP and HTTPS ingresses
+    #http_and_https_ingress_ip = <None>
+
+    # Set this option to configure the ability to allow a virtual IP that is
+    # not in the range of external_ip_pools_lb specified in spec.loadBalancerIP
+    # of K8s service of type LoadBalancer to be realized in NSX.When the value
+    # is relaxed, any IP specified in spec.loadBalancerIP can be allowed. When
+    # the value is strict, only IP within the range of external_ip_pools_lb
+    # will be allowed.
+    # Choices: relaxed strict
+    #lb_ip_allocation = relaxed
+
+    # Set this to True to enable NCP to create tier1 router, first segment and
+    # default SNAT IP for VirtualNetwork CRD, and then create segment port for
+    # VM through VirtualNetworkInterface CRD.
+    #enable_vnet_crd = False
+
+    # Set this to True to enable NCP to create LoadBalancer on a Tier-1 for
+    # LoadBalancer CRD. This option does not support LB autoscaling.
+    #enable_lb_crd = False
+
+    # Set this to True to enable NCP to create LbMonitor CR for NSX LBS
+    #enable_lb_monitor_crd = False
+
+    # Set this to True to enable NCP to manage network resources per Namespace.
+    # This option only works under WCP T1 per Supervisor Namespace networking
+    # topology
+    #enable_nsxnetworkconfig_crd = False
+
+    # Set this to True to enable NCP to create static routes on Tier-1 router
+    # of namespace where RouteSet CR is in.
+    #enable_routeset_crd = False
+
+    # Set this to True to enable NCP to create subnets for IPPool CRD.
+    #enable_ip_pool_crd = False
+
+    # Option to set the type of baseline cluster policy. ALLOW_CLUSTER creates
+    # an explicit baseline policy to allow any pod to communicate any other pod
+    # within the cluster. ALLOW_NAMESPACE creates an explicit baseline policy
+    # to allow pods within the same namespace to communicate with each other.
+    # ALLOW_NAMESPACE_STRICT inherits the behaviors of ALLOW_NAMESPACE, and
+    # also restricts service talk to resources outside the cluster. By default,
+    # no baseline rule will be created and the cluster will assume the default
+    # behavior as specified by the backend.
+    # Choices: <None> allow_cluster allow_namespace allow_namespace_strict
+    #baseline_policy_type = <None>
+
+    # Specify a namespace pattern to whitelist if baseline_policy_type is
+    # allow_namespace. For example: ^openshift-\S+$ for namespaces starts with
+    # openshift.
+    #whitelist_namespace_pattern = <None>
+
+    # Maximum number of endpoints allowed to create for a service.
+    #max_allowed_endpoints = 1000
+
+    # Set this to True to enable NCP reporting NSX backend error to k8s object
+    # using k8s event
+    #enable_ncp_event = False
+
+    # Set this to True to enable multus to create multiple interfaces for one
+    # pod. Requires policy_nsxapi set to True to take effect. If passthrough
+    # interface is used as additional interface, user should deploy the network
+    # device plugin to provide device allocation information for NCP. Pod
+    # annotations with prefix "k8s.v1.cni.cncf.io" cannot be modified once pod
+    # is realized. User defined IP will not be allocated from the Segment
+    # IPPool. The "gateway" in NetworkAttachmentDefinition is not used to
+    # configure secondary interfaces, as the default gateway of Pod is
+    # configured by the primary CNI on the main network interface. User must
+    # define IP and/or MAC if no "ipam" is configured. Only available if node
+    # type is HOSTVM and not to be leveraged in conjunction with 3rd party CNI
+    # plugin
+    #enable_multus = True
+
+
+    # Interval of polling loadbalancer statistics. Default to60 seconds.
+    #lb_statistic_monitor_interval = 600
+
+    # Option to enable polling virtual server statistics.
+    #enable_lb_vs_statistics_monitor = False
+
+    # This option is for toggling process of network CRD.It should be set to
+    # False when the network status setting is done by OCP4 NetworkOperator
+    #process_oc_network = True
+
+    # nsx-node-agent will add iptables rules for K8s pod which has hostPort,
+    # client packets to hostPort will be SNATed to node IP. We leverage portmap
+    # plugin to add iptables DNAT rules for hostPort ingress traffic. This
+    # hostPort feature is only supported on K8s Linux node.
+    #enable_hostport_snat = False
+
+    # If this option is True, nsx-ncp-bootstrap pod will install portmap plugin
+    # from nsx-ncp image, nsx-ncp-cleanup pod will remove portmap plugin.
+    #use_ncp_portmap = False
+
+    # Interval of updating k8s network info instances.
+    #network_info_resync_period = 600
+
+    # Threshold value of ip usage for generating alarms to k8s network info
+    # CRD. The value should be in range (0, 1].
+    #ip_usage_alarm_threshold = 0.8
+
+
+    [nsx_kube_proxy]
+
+    # The way to process service configuration, set into OVS flow or write to
+    # nestdb,
+    # Choices: ovs nestdb
+    #config_handler = ovs
+
+
+
+
+    [nsx_node_agent]
+
+    # Prefix of node /proc and /var/run/netns path to mount on nsx_node_agent
+    # DaemonSet
+    #proc_mount_path_prefix = /host
+
+
+
+
+    # The log level of NSX RPC library. Ignored if debug is True
+    # Choices: NOTSET DEBUG INFO WARNING ERROR CRITICAL
+    #nsxrpc_loglevel = ERROR
+
+    # OVS bridge name
+    #ovs_bridge = br-int
+
+    # The time in seconds for nsx_node_agent to wait CIF config from HyperBus
+    # before returning to CNI
+    #config_retry_timeout = 300
+
+    # The time in seconds for nsx_node_agent to backoff before re-using an
+    # existing cached CIF to serve CNI request. Must be less than
+    # config_retry_timeout.
+    #config_reuse_backoff_time = 15
+
+
+    # The OVS uplink OpenFlow port where to apply the NAT rules to.
+    #ovs_uplink_port = <None>
+
+    # Set this to True if you want to install and use the NSX-OVS kernel
+    # module. If the host OS is supported, it will be installed by nsx-ncp-
+    # bootstrap and used by nsx-ovs container in nsx-node-agent pod. Note that
+    # you would have to add (uncomment) the volumes and mounts in the nsx-ncp-
+    # bootstrap DS and add SYS_MODULE capability in nsx-ovs container spec in
+    # nsx-node-agent DS. Failing to do so will result in failure of
+    # installation and/or kernel upgrade of NSX-OVS kernelmodule.
+    #use_nsx_ovs_kernel_module = False
+
+    # The time in seconds for nsx_node_agent to call OVS command. Please
+    # increase the time if OVS is in heavy load to create/delete ports
+    #ovs_operation_timeout = 5
+
+    # Set to true to allow the CNI plugin to enable IPv6 container interfaces
+    #enable_ipv6 = False
+
+    # Set to True if DHCP is configured on the "ovs_uplink_port". "auto" will
+    # try to automatically infer it but it only works on CoreOS. On other types
+    # host OS, it defaults to False
+    # Choices: True False auto
+    #is_dhcp_configured_on_ovs_uplink_port = auto
+
+    # If enabled, OVS IGMP snooped IPv4 and Ipv6 multicast addresses are
+    # converted into MAC addresses and added on the ovs_uplink_port statically
+    #enable_ovs_mcast_snooping = False
+
+    # The MTU value for nsx-cni
+    #mtu = 1500
+
+    # Applicable only in PKS. If set, nsx-node-agent watches for addition,
+    # removal, and update of nodelocaldns DaemonSet. Upon a change, it
+    # terminates and is restarted by the monit agent
+    #enable_nodelocaldns_monitoring = False
+
+    # The waiting time before nsx-node-agent returns response to CNI plugin,
+    # there is a potential timing issue between port creation and related
+    # firewall config update on Hypervisor host
+    #waiting_before_cni_response = 0
 
 
     [nsx_v3]
@@ -209,7 +457,8 @@ data:
     # Indicates whether distributed firewall rules are logged. Option 'ALL'
     # will enable logging for all DFW rules (both DENY and ALLOW), and option
     # 'DENY' will enable logging only for DENY rules. Remove this config if no
-    # logging is desired
+    # logging is desired. When IPv6 is enabled this setting will not apply to
+    # rules for allowing ND traffic.
     # Choices: ALL DENY <None>
     #log_firewall_traffic = <None>
 
@@ -237,7 +486,7 @@ data:
 
     # Option to set load balancing algorithm in load balancer pool object.
     # Choices: ROUND_ROBIN LEAST_CONNECTION IP_HASH WEIGHTED_ROUND_ROBIN
-    #pool_algorithm = WEIGHTED_ROUND_ROBIN
+    #pool_algorithm = ROUND_ROBIN
 
     # Option to set load balancer service size. MEDIUM Edge VM (4 vCPU, 8GB)
     # only supports SMALL LB. LARGE Edge VM (8 vCPU, 16GB) only supports MEDIUM
@@ -268,12 +517,22 @@ data:
     #dlb_l4_persistence = <None>
 
 
+
+
+
+    # Name or ID of the container ip blocks that will be used for creating
+    # subnets. If name, it must be unique. If policy_nsxapi is enabled, it also
+    # support automatically creating the IP blocks. The definition is a comma
+    # separated list: CIDR,CIDR,... Mixing different formats (e.g. UUID,CIDR)
+    # is not supported.
+    #container_ip_blocks = []
+
     # Resource ID of the container ip blocks that will be used for creating
     # subnets for no-SNAT projects. If specified, no-SNAT projects will use
     # these ip blocks ONLY. Otherwise they will use container_ip_blocks
     #no_snat_ip_blocks = []
 
-    # Resource ID of the external ip pools that will be used for allocating IP
+    # Name or ID of the external ip pools that will be used for allocating IP
     # addresses which will be used for translating container IPs via SNAT
     # rules. If policy_nsxapi is enabled, it also support automatically
     # creating the ip pools. The definition is a comma separated list:
@@ -282,20 +541,17 @@ data:
     #external_ip_pools = []
 
 
-    # Resource ID of the container ip blocks that will be used for creating
-    # subnets. If name, it must be unique. If policy_nsxapi is enabled, it also
-    # support automatically creating the IP blocks. The definition is a comma
-    # separated list: CIDR,CIDR,... Mixing different formats (e.g. UUID,CIDR)
-    # is not supported.
-    #container_ip_blocks = []
 
-    # Resource ID of the top-tier router for the container cluster network,
+
+
+
+    # Name or ID of the top-tier router for the container cluster network,
     # which could be either tier0 or tier1. If policy_nsxapi is enabled, should
     # be ID of a tier0/tier1 gateway.
     #top_tier_router = <None>
 
     # Option to use single-tier router for the container cluster network
-    #single_tier_topology = True
+    #single_tier_topology = False
 
     # Option to use single-tier router for the container cluster network. Each
     # namespace will have dedicated tier-1 router created. Namespaces with
@@ -309,7 +565,7 @@ data:
     # Mixing different formats (e.g. UUID, CIDR&IP_Range) is not supported.
     #external_ip_pools_lb = []
 
-    # Resource ID of the NSX overlay transport zone that will be used for
+    # Name or ID of the NSX overlay transport zone that will be used for
     # creating logical switches for container networking. It must refer to an
     # already existing resource on NSX and every transport node where VMs
     # hosting containers are deployed must be enabled on this transport zone
@@ -317,7 +573,7 @@ data:
 
     # Name of the enforcement point used to look up overlay transport zones and
     # edge cluster paths, e.g. vmc-enforcementpoint, default, etc.
-    #enforcement_point = <None>
+    #enforcement_point = default
 
     # Resource ID of the lb service that can be attached by virtual servers
     #lb_service = <None>
@@ -335,7 +591,6 @@ data:
     # remove this config
     # Choices: <None> INSERT REPLACE
     #x_forwarded_for = <None>
-
 
     # Resource ID of the firewall section that will be used to create firewall
     # sections below this mark section
@@ -482,127 +737,49 @@ data:
     #wait_for_security_policy_sync = False
 
 
-    # Set this to True to enable rule tag as cluster name in DFW logs for k8s
+    # Set this to True to enable rule tag as cluster name in DFW logs for k8s.
+    # When IPv6 is enabled, the tag will not be applied to rules created by NCP
+    # for allowing ND traffic.
     #enable_rule_tag = True
 
+    # Set this to enable logging for snat rule, supported choices are : None,
+    # Basic and Extended.none for no logging, basic for logging for
+    # namespacesnat rules, extended for logging for snat rules for
+    # allnamespaces and services
+    # Choices: none basic extended
+    #snat_rule_logging = none
 
-    [ha]
-
-
-    # Time duration in seconds of mastership timeout. NCP instance will remain
-    # master for this duration after elected. Note that the heartbeat period
-    # plus the update timeout must not be greater than this period. This is
-    # done to ensure that the master instance will either confirm liveness or
-    # fail before the timeout.
-    #master_timeout = 18
-
-    # Time in seconds between heartbeats for elected leader. Once an NCP
-    # instance is elected master, it will periodically confirm liveness based
-    # on this value.
-    #heartbeat_period = 6
-
-    # Timeout duration in seconds for update to election resource. The default
-    # value is calculated by subtracting heartbeat period from master timeout.
-    # If the update request does not complete before the timeout it will be
-    # aborted. Used for master heartbeats to ensure that the update finishes or
-    # is aborted before the master timeout occurs.
-    #update_timeout = <None>
-
-
-    [k8s]
-
-    # Kubernetes API server IP address.
-    #apiserver_host_ip = <None>
-
-    # Kubernetes API server port.
-    #apiserver_host_port = <None>
-
-    # Full path of the Token file to use for authenticating with the k8s API
+    # Log properties of virtual server for ingress/routeIt maps to two
+    # parameters access_log_enabled andlog_significant_event_only of virtual
+    # server.It decides whether to log and what events to recordby virtual
     # server.
-    client_token_file = /var/run/secrets/kubernetes.io/serviceaccount/token
-
-    # Full path of the client certificate file to use for authenticating with
-    # the k8s API server. It must be specified together with
-    # "client_private_key_file".
-    #client_cert_file = <None>
-
-    # Full path of the client private key file to use for authenticating with
-    # the k8s API server. It must be specified together with
-    # "client_cert_file".
-    #client_private_key_file = <None>
-
-    # Specify a CA bundle file to use in verifying the k8s API server
-    # certificate.
-    ca_file = /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-
-    # Specify whether ingress controllers are expected to be deployed in
-    # hostnework mode or as regular pods externally accessed via NAT
-    # Choices: hostnetwork nat
-    #ingress_mode = hostnetwork
-
-    # Log level for the kubernetes adaptor. Ignored if debug is True
-    # Choices: NOTSET DEBUG INFO WARNING ERROR CRITICAL
-    #loglevel = <None>
-
-    # The default HTTP ingress port for non-NSX ingress controllers in NAT
-    # mode.
-    #http_ingress_port = 80
-
-    # The default HTTPS ingress port for non-NSX ingress controllers in NAT
-    # mode.
-    #https_ingress_port = 443
+    # Choices: none all significant
+    #vs_access_log = none
 
 
-    # Specify thread pool size to process resource events
-    #resource_watcher_thread_pool_size = 1
+    # The time in seconds before a released IP can be reallocated. This value
+    # is used to determine if a previously exhuasted logical switch can be used
+    # again for creating a new logical port
+    #ip_reallocation_time = 60
 
-    # User specified IP address for HTTP and HTTPS ingresses
-    #http_and_https_ingress_ip = <None>
+    # Specify a custom cookie name for NSX default LB when l7_persistence type
+    # is set to cookie. It has no effect if l7_persistence is not set.
+    #cookie_name = <None>
 
-    # Set this to True to enable NCP to create tier1 router, first segment and
-    # default SNAT IP for VirtualNetwork CRD, and then create segment port for
-    # VM through VirtualNetworkInterface CRD.
-    #enable_vnet_crd = False
-
-    # Set this to True to enable NCP to create LoadBalancer on a Tier-1 for
-    # LoadBalancer CRD. This option does not support LB autoscaling.
-    #enable_lb_crd = False
-
-    # Option to set the type of baseline cluster policy. ALLOW_CLUSTER creates
-    # an explicit baseline policy to allow any pod to communicate any other pod
-    # within the cluster. ALLOW_NAMESPACE creates an explicit baseline policy
-    # to allow pods within the same namespace to communicate with each other.
-    # By default, no baseline rule will be created and the cluster will assume
-    # the default behavior as specified by the backend. Modification is not
-    # supported after the value is set.
-    # Choices: <None> allow_cluster allow_namespace
-    #baseline_policy_type = <None>
-
-    # Maximum number of endpoints allowed to create for a service.
-    #max_allowed_endpoints = 1000
-
-    # Set this to True to enable NCP reporting NSX backend error to k8s object
-    # using k8s event
-    #enable_ncp_event = False
-
-    # Set this to True to enable multus to create multiple interfaces for one
-    # pod. If passthrough interface is usedas additional interface, user should
-    # deploy device plugin to provide device allocation information for NCP.Pod
-    # annotations under prefix "k8s.v1.cni.cncf.io" cannot be modified after
-    # pod realized. User defined IP will not be allocated from Segment IPPool.
-    # "gateway" in NetworkAttachmentDefinition is not used to configure
-    # secondary interfaces. Default gateway of pod is configured by primary
-    # interface. User must define IP and/or MAC if no "ipam" is configured.Only
-    # available if node type is HOSTVM
-    #enable_multus = True
+    # If true, this will enable multi t0 capability in wcp cluster.
+    #multi_t0 = False
 
 
-    # Interval of polling loadbalancer statistics. Default to60 seconds.
-    #lb_statistic_monitor_interval = 60
+    [vc]
 
-    # This option is for toggling process of network CRD.It should be set to
-    # False when the network status setting is done by OCP4 NetworkOperator
-    #process_oc_network = True
+    # IpAddress or Hostname of VC
+    #vc_endpoint = <None>
+
+    # The SSO domain associated with the deployment
+    #sso_domain = vsphere.local
+
+    # VC API server HTTPS port.
+    #https_port = 443
 
 
 
@@ -613,76 +790,4 @@ data:
     # Deprecated option: deny_subnets_redistribution
     # Replaced by [nsx_v3] configure_t0_redistribution
 
-    [nsx_kube_proxy]
 
-    # The way to process service configuration, set into OVS flow or write to
-    # nestdb,
-    # Choices: ovs nestdb
-    #config_handler = ovs
-
-
-
-
-    [nsx_node_agent]
-
-    # Prefix of node /proc and /var/run/netns path to mount on nsx_node_agent
-    # DaemonSet
-    #proc_mount_path_prefix = /host
-
-
-
-
-    # The log level of NSX RPC library
-    # Choices: NOTSET DEBUG INFO WARNING ERROR CRITICAL
-    #nsxrpc_loglevel = ERROR
-
-    # OVS bridge name
-    ovs_bridge = br-int
-
-    # The time in seconds for nsx_node_agent to wait CIF config from HyperBus
-    # before returning to CNI
-    #config_retry_timeout = 300
-
-    # The time in seconds for nsx_node_agent to backoff before re-using an
-    # existing cached CIF to serve CNI request. Must be less than
-    # config_retry_timeout.
-    #config_reuse_backoff_time = 15
-
-
-    # The OVS uplink OpenFlow port where to apply the NAT rules to.
-    ovs_uplink_port = eth0
-
-    # Set this to True if you want to install and use the NSX-OVS kernel
-    # module. If the host OS is supported, it will be installed by nsx-ncp-
-    # bootstrap and used by nsx-ovs container in nsx-node-agent pod. Note that
-    # you would have to add (uncomment) the volumes and mounts in the nsx-ncp-
-    # bootstrap DS and add SYS_MODULE capability in nsx-ovs container spec in
-    # nsx-node-agent DS. Failing to do so will result in failure of
-    # installation and/or kernel upgrade of NSX-OVS kernelmodule.
-    #use_nsx_ovs_kernel_module = False
-
-    # The time in seconds for nsx_node_agent to call OVS command. Please
-    # increase the time if OVS is in heavy load to create/delete ports
-    #ovs_operation_timeout = 5
-
-    # Set to true to allow the CNI plugin to enable IPv6 container interfaces
-    #enable_ipv6 = False
-
-    # Set to True if DHCP is configured on the "ovs_uplink_port". "auto" will
-    # try to automatically  infer it but it only works on CoreOS. On other
-    # types host OS, it defaults to False
-    # Choices: True False auto
-    #is_dhcp_configured_on_ovs_uplink_port = auto
-
-    # The MTU value for nsx-cni
-    #mtu = 1500
-
-    # Applicable only in PKS. If set, nsx-node-agent watches for addition,
-    # removal, and update of nodelocaldns DaemonSet. Upon a change, it
-    # terminates and is restarted by the monit agent
-    #enable_nodelocaldns_monitoring = False
-
-    # The waiting time before nsx-node-agent returns response to CNI plugin,
-    # there is a potential timing issue between port creation and related
-    # firewall config update on Hypervisor host
-    #waiting_before_cni_response = 0
