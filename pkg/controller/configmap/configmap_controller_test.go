@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 func TestConfigMapController_deleteExistingPods(t *testing.T) {
@@ -55,6 +56,194 @@ func TestConfigMapController_deleteExistingPods(t *testing.T) {
 	if !errors.IsNotFound(err) {
 		t.Fatalf("failed to delete ncp pod")
 	}
+}
+
+func TestConfigMapController_patchObjSpecAnnotations(t *testing.T) {
+	nsxNameSpaceName := "nsx-system"
+	testname := "test-name"
+	var err error
+
+	// Patch obj without template case
+	obj := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "apps/v1",
+			"kind":       "Deployment",
+			"metadata": map[string]interface{}{
+				"name":      "test-name",
+				"namespace": nsxNameSpaceName,
+			},
+			"spec": map[string]interface{}{
+				"replicas": 2,
+				"selector": map[string]interface{}{
+					"matchLabels": map[string]interface{}{
+						"app": "demo",
+					},
+				},
+			},
+		},
+	}
+
+	err = patchObjSpecAnnotations(obj, testname)
+	assert.True(t, err != nil)
+
+	// Patch obj without template emtpy case
+	obj = &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "apps/v1",
+			"kind":       "Deployment",
+			"metadata": map[string]interface{}{
+				"name":      "test-name",
+				"namespace": nsxNameSpaceName,
+			},
+			"spec": map[string]interface{}{
+				"replicas": 2,
+				"selector": map[string]interface{}{
+					"matchLabels": map[string]interface{}{
+						"app": "demo",
+					},
+				},
+				"template": map[string]interface{}{},
+			},
+		},
+	}
+	
+	err = patchObjSpecAnnotations(obj, testname)
+	assert.True(t, err == nil)
+	
+	// Verify timestamp field was patched
+	annotations, found, err := unstructured.NestedMap(obj.Object, "spec", "template", "metadata", "annotations")
+	if err != nil || !found || annotations == nil {
+		t.Fatalf("Get annotations failed")
+	}
+	timeStamp, timeStampFound := annotations["updateTimeStamp"].(string)
+	assert.True(t, timeStampFound)
+	assert.True(t, len(timeStamp) != 0)
+
+	// Patch obj without metada case
+	obj = &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "apps/v1",
+			"kind":       "Deployment",
+			"metadata": map[string]interface{}{
+				"name":      "test-name",
+				"namespace": nsxNameSpaceName,
+			},
+			"spec": map[string]interface{}{
+				"replicas": 2,
+				"selector": map[string]interface{}{
+					"matchLabels": map[string]interface{}{
+						"app": "demo",
+					},
+				},
+				"template": map[string]interface{}{
+					"hostNetwork": "true",
+				},
+			},
+		},
+	}
+	
+	err = patchObjSpecAnnotations(obj, testname)
+	assert.True(t, err == nil)
+    
+	// Verify timestamp field was patched
+	annotations, found, err = unstructured.NestedMap(obj.Object, "spec", "template", "metadata", "annotations")
+	if err != nil || !found || annotations == nil {
+		t.Fatalf("Get annotations failed")
+	}
+	timeStamp, timeStampFound = annotations["updateTimeStamp"].(string)
+	assert.True(t, timeStampFound)
+	assert.True(t, len(timeStamp) != 0)
+
+	// Patch obj without annotations spec case
+	testname = "nsx-ncp"
+	obj = &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "apps/v1",
+			"kind":       "Deployment",
+			"metadata": map[string]interface{}{
+				"name":      testname,
+				"namespace": nsxNameSpaceName,
+			},
+			"spec": map[string]interface{}{
+				"replicas": 2,
+				"selector": map[string]interface{}{
+					"matchLabels": map[string]interface{}{
+						"app": "demo",
+					},
+				},
+				"template": map[string]interface{}{
+					"metadata": map[string]interface{}{
+						"creationTimestamp": "null",
+						"labels": map[string]interface{}{
+							"component": "nsx-ncp",
+							"tier":      "nsx-networking",
+							"version":   "v1",
+						},
+					},
+					"hostNetwork": "true",
+				},
+			},
+		},
+	}
+
+	err = patchObjSpecAnnotations(obj, testname)
+	assert.True(t, err == nil)
+
+	// Verify timestamp field was patched
+	annotations, found, err = unstructured.NestedMap(obj.Object, "spec", "template", "metadata", "annotations")
+	if err != nil || !found || annotations == nil {
+		t.Fatalf("Get annotations failed")
+	}
+	timeStamp, timeStampFound = annotations["updateTimeStamp"].(string)
+	assert.True(t, timeStampFound)
+	assert.True(t, len(timeStamp) != 0)
+
+	// Patch obj with annotations spec case
+	testname = "nsx-node-agent"
+	obj = &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "apps/v1",
+			"kind":       "Deployment",
+			"metadata": map[string]interface{}{
+				"name":      testname,
+				"namespace": nsxNameSpaceName,
+			},
+			"spec": map[string]interface{}{
+				"replicas": 2,
+				"selector": map[string]interface{}{
+					"matchLabels": map[string]interface{}{
+						"app": "demo",
+					},
+				},
+				"template": map[string]interface{}{
+					"metadata": map[string]interface{}{
+						"creationTimestamp": "null",
+						"labels": map[string]interface{}{
+							"component": "nsx-ncp",
+							"tier":      "nsx-networking",
+							"version":   "v1",
+						},
+						"annotations": map[string]interface{}{
+							"test_annotation": "test_value",
+						},
+						"hostNetwork": "true",
+					},
+				},
+			},
+		},
+	}
+
+	err = patchObjSpecAnnotations(obj, testname)
+	assert.True(t, err == nil)
+
+	// Verify timestamp field was patched
+	annotations, found, err = unstructured.NestedMap(obj.Object, "spec", "template", "metadata", "annotations")
+	if err != nil || !found || annotations == nil {
+		t.Fatalf("Get annotations failed")
+	}
+	timeStamp, timeStampFound = annotations["updateTimeStamp"].(string)
+	assert.True(t, timeStampFound)
+	assert.True(t, len(timeStamp) != 0)
 }
 
 func NewFakeReconcileConfigMap() *ReconcileConfigMap {
