@@ -28,9 +28,12 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
 var log = logf.Log.WithName("cmd")
+
+var metricsBindAddress string
 
 func printVersion() {
 	log.Info(fmt.Sprintf("Operator Version: %s", version.Version))
@@ -47,6 +50,7 @@ func main() {
 	// Add flags registered by imported packages (e.g. glog and
 	// controller-runtime)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	pflag.StringVar(&metricsBindAddress, "metrics-bind-address", metrics.DefaultBindAddress, "Sets the metrics bind address (default :8080)")
 
 	pflag.Parse()
 
@@ -78,7 +82,8 @@ func main() {
 
 	// Set default manager options
 	options := manager.Options{
-		Namespace: namespace,
+		Namespace:          namespace,
+		MetricsBindAddress: metricsBindAddress,
 	}
 
 	if namespace != "" && namespace != operatortypes.NsxNamespace {
