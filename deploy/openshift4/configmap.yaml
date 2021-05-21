@@ -669,3 +669,8 @@ data:
 
     # The MTU value for nsx-cni
     #mtu = 1500
+
+    # If enabled, OVS IGMP snooped IPv4 and IPv6 multicast addresses are
+    # converted into MAC addresses and added on the ovs_uplink_port statically
+    #enable_ovs_mcast_snooping = False
+
