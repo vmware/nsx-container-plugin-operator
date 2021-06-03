@@ -25,6 +25,12 @@ build:
 bin:
 	GOOS=linux $(GO) build -o $(BINDIR)/$(OPERATOR_NAME) $(GOFLAGS) -ldflags '$(LDFLAGS)' ./cmd/manager
 
+.PHONY: bundle
+bundle:
+	docker build -t $(BUNDLE_REPO)/$(BUNDLE_IMG_NAME):tmp -f build/Dockerfile .
+	docker push $(BUNDLE_REPO)/$(BUNDLE_IMG_NAME):tmp
+	opm index add --build-tool docker --bundles $(BUNDLE_REPO)/$(BUNDLE_IMG_NAME):tmp --tag $(BUNDLE_REPO)/$(BUNDLE_IMG_NAME):$(BUNDLE_VERSION)
+
 .PHONY: test-unit
 test-unit:
 	GOOS=linux $(GO) test -race -cover github.com/vmware/nsx-container-plugin-operator/pkg...
