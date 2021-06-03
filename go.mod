@@ -7,6 +7,7 @@ require (
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-openapi/errors v0.19.2
 	github.com/google/martian v2.1.0+incompatible
+	github.com/imdario/mergo v0.3.7
 	github.com/onsi/gomega v1.9.0
 	github.com/openshift/api v3.9.1-0.20191111211345-a27ff30ebf09+incompatible
 	github.com/openshift/cluster-network-operator v0.0.0-20200505233431-0c44782d5245

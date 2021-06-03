@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
+	"github.com/imdario/mergo"
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/cluster-network-operator/pkg/apply"
 	k8sutil "github.com/openshift/cluster-network-operator/pkg/util/k8s"
@@ -382,19 +384,20 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		}
 	}
 
+	ncpDeploymentChanged := false
 	if !needChange.ncp && !needChange.agent && !needChange.bootstrap {
 		// Check if NCP_IMAGE or nsx-ncp replicas changed
 		anyMonitoredResDeleted, err := r.isAnyMonitoredNCPResDeleted()
 		if err != nil {
 			return reconcile.Result{Requeue: true}, err
 		} else if !anyMonitoredResDeleted {
-			needChange.ncp, err = r.isNcpDeploymentChanged(ncpReplicas)
+			ncpDeploymentChanged, err = r.isNcpDeploymentChanged(ncpReplicas)
 			if err != nil {
 				return reconcile.Result{Requeue: true}, err
 			}
 
-			if !needChange.ncp {
-				log.Info("no new configuration needs to apply")
+			if !ncpDeploymentChanged {
+				log.Info("no new nsx-ncp deployment needs to apply")
 				// Check if network config status must be updated
 				if networkConfigChanged {
 					err = updateNetworkStatus(networkConfig, instance, r)
@@ -426,39 +429,47 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			return reconcile.Result{}, err
 		}
 
+		name := obj.GetName()
+		namespace := obj.GetNamespace()
+		// Redeploy NCP pods with patching NCP Deployment for detecting configmap sections impacting on NCP
+		// NCP_IMAGE or nsx-ncp replicas changes could be handled in ApplyObject with rendered Deployment obj
+		if appliedConfigMap != nil && needChange.ncp {
+			if name == operatortypes.NsxNcpDeploymentName && namespace == operatortypes.NsxNamespace {
+				if err = patchObjSpecAnnotations(obj, operatortypes.NsxNcpDeploymentName); err != nil {
+					r.status.SetDegraded(statusmanager.OperatorConfig, "patchDeploySpecError",
+						fmt.Sprintf("Deployment %s is not using the latest configuration updates because: %v",
+							operatortypes.NsxNcpDeploymentName, err))
+					return reconcile.Result{}, err
+				}
+			}
+		}
+		// Redeploy nsx-node-agent pods when detecting configmap sections impacting on nsx-node-agent
+		if appliedConfigMap != nil && needChange.agent {
+			if name == operatortypes.NsxNodeAgentDsName && namespace == operatortypes.NsxNamespace {
+				if err = patchObjSpecAnnotations(obj, operatortypes.NsxNodeAgentDsName); err != nil {
+					r.status.SetDegraded(statusmanager.OperatorConfig, "patchDaemonSetSpecError",
+						fmt.Sprintf("DaemonSet %s is not using the latest configuration updates because: %v",
+							operatortypes.NsxNodeAgentDsName, err))
+					return reconcile.Result{}, err
+				}
+			}
+		}
+		// Redeploy nsx-node-agent pods when detecting configmap sections impacting on nsx-node-agent
+		if appliedConfigMap != nil && needChange.bootstrap {
+			if name == operatortypes.NsxNcpBootstrapDsName && namespace == operatortypes.NsxNamespace {
+				if err = patchObjSpecAnnotations(obj, operatortypes.NsxNcpBootstrapDsName); err != nil {
+					r.status.SetDegraded(statusmanager.OperatorConfig, "patchDaemonSetSpecError",
+						fmt.Sprintf("DaemonSet %s is not using the latest configuration updates because: %v",
+							operatortypes.NsxNcpBootstrapDsName, err))
+					return reconcile.Result{}, err
+				}
+			}
+		}
+
 		if err = apply.ApplyObject(context.TODO(), r.client, obj); err != nil {
 			log.Error(err, fmt.Sprintf("could not apply (%s) %s/%s", obj.GroupVersionKind(), obj.GetNamespace(), obj.GetName()))
 			r.status.SetDegraded(statusmanager.OperatorConfig, "ApplyOperatorConfig",
 				fmt.Sprintf("Failed to apply operator configuration: %v", err))
-			return reconcile.Result{}, err
-		}
-	}
-
-	// Delete old NCP and nsx-node-agent pods
-	if appliedConfigMap != nil && needChange.ncp {
-		err = deleteExistingPods(r.client, operatortypes.NsxNcpDeploymentName)
-		if err != nil {
-			r.status.SetDegraded(statusmanager.OperatorConfig, "DeleteOldPodsError",
-				fmt.Sprintf("Deployment %s is not using the latest configuration updates because: %v",
-					operatortypes.NsxNcpDeploymentName, err))
-			return reconcile.Result{}, err
-		}
-	}
-	if appliedConfigMap != nil && needChange.agent {
-		err = deleteExistingPods(r.client, operatortypes.NsxNodeAgentDsName)
-		if err != nil {
-			r.status.SetDegraded(statusmanager.OperatorConfig, "DeleteOldPodsError",
-				fmt.Sprintf("DaemonSet %s is not using the latest configuration updates because: %v",
-					operatortypes.NsxNodeAgentDsName, err))
-			return reconcile.Result{}, err
-		}
-	}
-	if appliedConfigMap != nil && needChange.bootstrap {
-		err = deleteExistingPods(r.client, operatortypes.NsxNcpBootstrapDsName)
-		if err != nil {
-			r.status.SetDegraded(statusmanager.OperatorConfig, "DeleteOldPodsError",
-				fmt.Sprintf("DaemonSet %s is not using the latest configuration updates because: %v",
-					operatortypes.NsxNcpBootstrapDsName, err))
 			return reconcile.Result{}, err
 		}
 	}
@@ -537,6 +548,42 @@ func deleteExistingPods(c client.Client, component string) error {
 	}
 	log.Info(fmt.Sprintf("Successfully deleted pod %s", component))
 	return nil
+}
+
+// Patch deployment or Ds: "spec:template" field to trigger k8s to redeploy pods with 
+// updated spec using a rolling update strategy, which is default setting.
+func patchObjSpecAnnotations(obj *unstructured.Unstructured, component string) error {
+	template, found, err := unstructured.NestedMap(obj.Object, "spec", "template")
+	if err != nil || !found || template == nil {
+		log.Error(err, fmt.Sprintf("Object template not found or error in spec: %s", component))
+		if err == nil && !found {
+			err = errors.New("Object template not found")
+		}
+		return err
+	}
+
+	timeStamp := time.Now().Format(time.RFC3339)
+	annotations := map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"annotations": map[string]interface{}{
+				"updateTimeStamp": timeStamp,
+			},
+		},
+	}
+
+	if err = mergo.Merge(&template, annotations); err != nil {
+		log.Error(err, fmt.Sprintf("Merge Object: %s annotations failed", component))
+		return err
+	}
+
+	// patch annotations
+	if err = unstructured.SetNestedField(obj.Object, template, "spec", "template"); err != nil {
+		log.Error(err, fmt.Sprintf("Patch Object: %s Spec Template annotations failed", component))
+		return err
+	} else {
+		log.Info(fmt.Sprintf("Update Object: %s Spec Template annotations was successful", component))
+		return nil
+	}
 }
 
 func (r *ReconcileConfigMap) updateSharedInfoWithNsxNcpResources(objs []*unstructured.Unstructured) {
