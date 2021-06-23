@@ -348,7 +348,7 @@ func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 		return nil, errors.Errorf("failed to get NSX config from operator ConfigMap")
 	}
 	data := configMap.Data
-	cfg, err := ini.LoadSources(ini.LoadOptions{IgnoreInlineComment: true}, []byte(data[operatortypes.ConfigMapDataKey]))
+	cfg, err := ini.LoadSources(ini.LoadOptions{SpaceBeforeInlineComment: true}, []byte(data[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		return nil, err
 	}
