@@ -246,7 +246,7 @@ func TestNeedApplyChange(t *testing.T) {
 
 	cfg.Section("nsx_node_agent").DeleteKey("ovs_uplink_port")
 	cfg.Section("nsx_node_agent").DeleteKey("mtu")
-	cfg.Section("DEFAULT").NewKey("debug", "True")
+	cfg.Section("k8s").NewKey("loglevel", "DEBUG")
 	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
 	needChange, err = NeedApplyChange(currConfigMap, prevConfigMap)
 	assert.True(t, needChange.ncp)

@@ -448,14 +448,8 @@ func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap)
 		if !needChange.agent && inSlice(sec, operatortypes.AgentSections) {
 			needChange.agent = true
 		}
-		bootstrapOpts, found := operatortypes.BootstrapOptions[sec]
-		if !needChange.bootstrap && found {
-			for _, opt := range bootstrapOpts {
-				if currCfg.Section(sec).Key(opt).Value() != prevCfg.Section(sec).Key(opt).Value() {
-					needChange.bootstrap = true
-					break
-				}
-			}
+		if !needChange.bootstrap && inSlice(sec, operatortypes.BootstrapOptions) {
+			needChange.bootstrap = true
 		}
 		if needChange.ncp && needChange.agent && needChange.bootstrap {
 			break
