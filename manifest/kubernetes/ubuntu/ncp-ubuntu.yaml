@@ -171,6 +171,8 @@ spec:
     - net-attach-def
 
 ---
+
+
 # Create Namespace for NSX owned resources
 kind: Namespace
 apiVersion: v1
@@ -322,11 +324,9 @@ rules:
    - ""
    - extensions
    - networking.k8s.io
-
    resources:
      - ingresses/status
      - services/status
-
 
    verbs:
      - replace
@@ -650,7 +650,7 @@ data:
 # Yaml template for NCP Deployment
 # Proper kubernetes API and NSX API parameters, and NCP Docker image
 # must be specified.
-# This yaml file is part of NCP 3.1.2 release.
+# This yaml file is part of NCP  release.
 
 # ConfigMap for ncp.ini
 apiVersion: v1
@@ -668,17 +668,7 @@ data:
 
 
 ---
-# ConfigMap for VERSION
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: nsx-ncp-version-config
-  namespace: nsx-system
-  labels:
-    version: v1
-data:
-  version: 3.1.2
----
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -801,12 +791,6 @@ spec:
                   items:
                     - key: ncp.ini
                       path: ncp.ini
-              # ConfigMap nsx-ncp-version-config is expected to supply VERSION
-              - configMap:
-                  name: nsx-ncp-version-config
-                  items:
-                    - key: version
-                      path: VERSION
               # To use cert based auth, uncomment and update the secretName,
               # then update ncp.ini with the mounted cert and key file paths
 
@@ -845,7 +829,7 @@ spec:
 # Yaml template for nsx-node-agent and nsx-kube-proxy DaemonSet
 # Proper kubernetes API parameters and NCP Docker image must be
 # specified.
-# This yaml file is part of NCP 3.1.2 release.
+# This yaml file is part of NCP  release.
 
 # ConfigMap for ncp.ini
 apiVersion: v1
@@ -896,6 +880,8 @@ spec:
           effect: NoSchedule
         - key: node.kubernetes.io/unreachable
           effect: NoSchedule
+        - operator: Exists
+          effect: NoExecute
       hostPID: true
       # If configured with ServiceAccount, update the ServiceAccount
       # name below.
@@ -1084,6 +1070,8 @@ spec:
           effect: NoSchedule
         - key: node.kubernetes.io/unreachable
           effect: NoSchedule
+        - operator: Exists
+          effect: NoExecute
       # If configured with ServiceAccount, update the ServiceAccount
       # name below.
       serviceAccountName: nsx-node-agent-svc-account
@@ -1290,11 +1278,6 @@ spec:
                   items:
                     - key: ncp.ini
                       path: ncp.ini
-              - configMap:
-                  name: nsx-ncp-version-config
-                  items:
-                    - key: version
-                      path: VERSION
 
         - name: openvswitch
           hostPath:
