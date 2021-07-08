@@ -11,4 +11,4 @@ const (
 var NcpSections = []string{"DEFAULT", "ha", "k8s", "coe", "nsx_v3", "vc"}
 var AgentSections = []string{"DEFAULT", "k8s", "coe", "nsx_node_agent", "nsx_kube_proxy"}
 var OperatorSections = []string{"DEFAULT", "ha", "k8s", "coe", "nsx_v3", "vc", "nsx_node_agent", "nsx_kube_proxy"}
-var BootstrapOptions = map[string][]string{"nsx_node_agent": {"mtu"}}
+var BootstrapOptions = []string{"DEFAULT", "nsx_node_agent"}
