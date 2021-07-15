@@ -58,6 +58,7 @@ func (adaptor *ConfigMapK8s) FillDefaults(configmap *corev1.ConfigMap, spec *con
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "coe", "enable_snat", "True", false))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "ha", "enable", "True", false))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_node_agent", "mtu", strconv.Itoa(operatortypes.DefaultMTU), false))
+	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "wait_for_security_policy_sync", "False", true))
 	// Write config back to ConfigMap data
 	(*data)[operatortypes.ConfigMapDataKey], err = iniWriteToString(cfg)
 	appendErrorIfNotNil(&errs, err)
@@ -80,7 +81,7 @@ func (adaptor *ConfigMapOc) FillDefaults(configmap *corev1.ConfigMap, spec *conf
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "coe", "adaptor", "openshift4", true))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "policy_nsxapi", "True", true))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "single_tier_topology", "True", true))
-	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "wait_for_security_policy_sync", "True", false))
+	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "wait_for_security_policy_sync", "False", true))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "coe", "enable_snat", "True", false))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "ha", "enable", "True", false))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "k8s", "process_oc_network", "False", true))
