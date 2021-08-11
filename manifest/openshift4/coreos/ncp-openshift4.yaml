@@ -186,6 +186,7 @@ rules:
    - ""
    - extensions
    - networking.k8s.io
+   - apps
 
    - config.openshift.io
 
@@ -199,6 +200,9 @@ rules:
      - secrets
       # new resource for k8s 1.18
      - ingressclasses
+
+     - statefulsets
+
 
      - routes
 
@@ -222,6 +226,7 @@ rules:
      - list
 
 
+
 ---
 
 # Create ClusterRole for NCP to edit resources
@@ -235,6 +240,7 @@ rules:
    - ""
    - extensions
    - networking.k8s.io
+   - apps
    resources:
      # NCP needs to annotate the SNAT errors on namespaces
      - namespaces
@@ -244,6 +250,10 @@ rules:
      - pods
      # NCP needs to annotate Networkpolicies for validation and update errors
      - networkpolicies
+     # NCP needs to annotate Statefulsets for ip_range
+
+     - statefulsets
+
 
      - routes
 
@@ -329,6 +339,7 @@ rules:
      - get
      - list
      - watch
+
 
 ---
 
