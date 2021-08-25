@@ -224,6 +224,10 @@ data:
     # Set this to True to enable NCP to create subnets for IPPool CRD.
     #enable_ip_pool_crd = False
 
+    # Set this to True to enable NCP to watch and sync VM created by VM
+    # Operator.
+    #enable_vm_crd = False
+
     # Option to set the type of baseline cluster policy. ALLOW_CLUSTER creates
     # an explicit baseline policy to allow any pod to communicate any other pod
     # within the cluster. ALLOW_NAMESPACE creates an explicit baseline policy
@@ -259,7 +263,7 @@ data:
     # define IP and/or MAC if no "ipam" is configured. Only available if node
     # type is HOSTVM and not to be leveraged in conjunction with 3rd party CNI
     # plugin
-    #enable_multus = True
+    #enable_multus = False
 
 
     # Interval of polling loadbalancer statistics. Default to60 seconds.
@@ -278,16 +282,20 @@ data:
     # hostPort feature is only supported on K8s Linux node.
     #enable_hostport_snat = False
 
-    # If this option is True, nsx-ncp-bootstrap pod will install portmap plugin
-    # from nsx-ncp image, nsx-ncp-cleanup pod will remove portmap plugin.
-    #use_ncp_portmap = False
-
     # Interval of updating k8s network info instances.
     #network_info_resync_period = 600
 
     # Threshold value of ip usage for generating alarms to k8s network info
     # CRD. The value should be in range (0, 1].
     #ip_usage_alarm_threshold = 0.8
+
+    # If true, pod ip of statefulset will locate in the ip_range in annotation
+    # of statefulset. It only works for policy mode.
+    #statefulset_ip_range = False
+
+    # If true, user can set ncp/subnets annotation on namespace to specify the
+    # subnets for no-snat namespace. It only works for policy mode.
+    #enable_namespace_subnets = False
 
 
     [nsx_kube_proxy]
@@ -318,7 +326,7 @@ data:
 
     # The time in seconds for nsx_node_agent to wait CIF config from HyperBus
     # before returning to CNI
-    #config_retry_timeout = 300
+    #config_retry_timeout = 220
 
     # The time in seconds for nsx_node_agent to backoff before re-using an
     # existing cached CIF to serve CNI request. Must be less than
@@ -367,6 +375,13 @@ data:
     # there is a potential timing issue between port creation and related
     # firewall config update on Hypervisor host
     #waiting_before_cni_response = 0
+
+    # The timeout time in seconds of removing all ovs ports.
+    #remove_ovs_ports_timeout = 0
+
+    # If this option is True, nsx-ncp-bootstrap pod will install portmap plugin
+    # from nsx-ncp image, nsx-ncp-cleanup pod will remove portmap plugin.
+    #use_ncp_portmap = False
 
 
     [nsx_v3]

@@ -256,6 +256,7 @@ rules:
    - ""
    - extensions
    - networking.k8s.io
+   - apps
 
    resources:
      - deployments
@@ -268,11 +269,15 @@ rules:
       # new resource for k8s 1.18
      - ingressclasses
 
+     - statefulsets
+
+
 
    verbs:
      - get
      - watch
      - list
+
 
 ---
 
@@ -287,6 +292,7 @@ rules:
    - ""
    - extensions
    - networking.k8s.io
+   - apps
    resources:
      # NCP needs to annotate the SNAT errors on namespaces
      - namespaces
@@ -296,6 +302,10 @@ rules:
      - pods
      # NCP needs to annotate Networkpolicies for validation and update errors
      - networkpolicies
+     # NCP needs to annotate Statefulsets for ip_range
+
+     - statefulsets
+
 
    verbs:
      - get
@@ -340,11 +350,6 @@ rules:
      - loadbalancers/status
      - nsxlbmonitors
      - nsxlbmonitors/status
-   
-     - virtualnetworks
-     - virtualnetworks/status
-     - virtualnetworkinterfaces
-     - virtualnetworkinterfaces/status
    
    verbs:
      - create
