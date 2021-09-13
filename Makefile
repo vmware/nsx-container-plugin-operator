@@ -27,9 +27,7 @@ bin:
 
 .PHONY: bundle
 bundle:
-	docker build -t $(BUNDLE_REPO)/$(BUNDLE_IMG_NAME):$(BUNDLE_VERSION) -f bundle.Dockerfile .
-	docker push $(BUNDLE_REPO)/$(BUNDLE_IMG_NAME):$(BUNDLE_VERSION)
-	opm index add --build-tool docker --bundles $(BUNDLE_REPO)/$(BUNDLE_IMG_NAME):$(BUNDLE_VERSION) --tag $(BUNDLE_REPO)/ncp-operator-index:$(BUNDLE_VERSION)
+	./bundle/generate_bundle.sh --bundle-repo $(BUNDLE_REPO) --bundle-image $(BUNDLE_IMG_NAME) --bundle-version $(BUNDLE_VERSION)
 
 .PHONY: test-unit
 test-unit:
