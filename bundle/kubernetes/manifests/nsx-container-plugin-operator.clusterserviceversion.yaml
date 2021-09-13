@@ -1,0 +1,325 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: "[\n  {\n    \"apiVersion\": \"operator.nsx.vmware.com/v1\",\n    \"kind\":
+      \"NcpInstall\",\n    \"metadata\": {\n      \"name\": \"ncp-install\"\n    },\n
+      \   \"spec\": {\n      \"ncpReplicas\": 1\n    }\n  } \n]"
+    capabilities: Seamless Upgrades
+    categories: Networking, Security
+    certified: "True"
+    containerImage: vmware/nsx-container-plugin-operator:3.2.0
+    description: An operator which provides NSX as default network for an Openshift
+      cluster. Simplifies the process of installing and upgrading the NSX Container
+      plugin (NCP) components running in an Openshift cluster. The operator also allows
+      for detailed monitoring of NCP components and reacts to configuration changes.
+      This is a cluster operator and must be installed upon cluster creation; for
+      more information please refer to install-time instructions.
+    marketplace.openshift.io/action-text: install-time Instructions
+    marketplace.openshift.io/remote-workflow: https://docs.vmware.com/en/VMware-NSX-T-Data-Center/3.1/ncp-openshift/GUID-1D75FE92-051C-4E30-8903-AF832E854AA7.html
+    repository: https://github.com/vmware/nsx-container-plugin/operator
+    support: VMware
+  name: nsx-container-plugin-operator.v3.2.0
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: NcpInstall is the Schema for the ncpinstalls API
+      displayName: NcpInstall
+      kind: NcpInstall
+      name: ncpinstalls.operator.nsx.vmware.com
+      resources:
+      - kind: Deployment
+        name: A Kubernetes Deployment for the Operator
+        version: v1
+      - kind: Configmap
+        name: A Configmap with parameter for setting up Operands
+        version: v1
+      - kind: NcpInstall
+        name: this operator's CR
+        version: v1
+      - kind: ClusterOperator
+        name: nsx-ncp cluster operator
+        version: v1
+      - kind: Network
+        name: Openshift's cluster network
+        version: v1
+      - kind: Daemonset
+        name: A Daemonset
+        version: v1
+      - kind: Pod
+        name: A Pod
+        version: v1
+      - kind: Secret
+        name: It's a secret, I can't tell you
+        version: v1
+      - kind: Node
+        name: A Kubernetes Node
+        version: v1
+      - kind: Status
+        name: A Kubernetes resource status
+        version: v1
+      specdescriptors:
+      - description: the replica numbers for the nsx-ncp deployment
+        path: ncpReplicas
+      statusdescriptors:
+      - description: standard conditions field for Kubernetes resources
+        path: conditions
+      version: v1
+  description: An operator which provides NSX as default network for an Openshit cluster.
+    Simplifies the process of installing and upgrading the NSX Container plugin (NCP)
+    components running in the Openshift cluster. The operator also allows for detailed
+    monitoring of NCP components and reacts to configuration changes.
+  displayName: NSX Container Plugin Operator
+  install:
+    spec:
+      deployments:
+      - name: nsx-ncp-operator
+        template:
+          replicas: 1
+          selector:
+            matchLabels:
+              name: nsx-ncp-operator
+          template:
+            metadata:
+              labels:
+                name: nsx-ncp-operator
+            spec:
+              containers:
+              - command:
+                - /bin/bash
+                - -c
+                - nsx-ncp-operator --zap-time-encoding=iso8601
+                env:
+                - name: POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+                - name: OPERATOR_NAME
+                  value: nsx-ncp-operator
+                - name: NCP_IMAGE
+                  value: nsx-ncp:latest
+                - name: WATCH_NAMESPACE
+                  value: nsx-system-operator
+                image: docker.io/vmware/nsx-container-plugin-operator:v3.2.0
+                imagePullPolicy: IfNotPresent
+                name: nsx-ncp-operator
+                volumeMounts:
+                - mountPath: /host/etc/os-release
+                  name: host-os-release
+              hostNetwork: true
+              serviceAccountName: nsx-ncp-operator
+              tolerations:
+              - effect: NoSchedule
+                key: node-role.kubernetes.io/master
+              - effect: NoSchedule
+                key: node.kubernetes.io/not-ready
+              - effect: NoSchedule
+                key: node.kubernetes.io/network-unavailable
+              volumes:
+              - hostPath:
+                  path: /etc/os-release
+                name: host-os-release
+      permissions:
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - pods
+          - pods/log
+          - pods/exec
+          - configmaps
+          - namespaces
+          - serviceaccounts
+          - secrets
+          - nodes/status
+          verbs:
+          - create
+          - get
+          - list
+          - patch
+          - delete
+          - update
+          - watch
+          - deletecollection
+        - apiGroups:
+          - apps
+          resources:
+          - deployments
+          - daemonsets
+          verbs:
+          - create
+          - get
+          - list
+          - patch
+          - delete
+          - update
+          - watch
+        - apiGroups:
+          - rbac.authorization.k8s.io
+          resources:
+          - clusterroles
+          - clusterrolebindings
+          - roles
+          - rolebindings
+          verbs:
+          - create
+          - get
+          - list
+          - patch
+          - update
+          - watch
+          - delete
+        - apiGroups:
+          - operator.nsx.vmware.com
+          resources:
+          - ncpinstalls
+          - ncpinstalls/status
+          verbs:
+          - get
+          - list
+          - watch
+          - patch
+          - update
+        - apiGroups:
+          - ""
+          resources:
+          - endpoints
+          - services
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - ""
+          - extensions
+          - networking.k8s.io
+          resources:
+          - namespaces
+          - ingresses
+          - services
+          - pods
+          - networkpolicies
+          - routes
+          verbs:
+          - get
+          - watch
+          - list
+          - update
+          - patch
+        - apiGroups:
+          - nsx.vmware.com
+          resources:
+          - nsxerrors
+          - nsxlocks
+          - ncpconfigs
+          verbs:
+          - create
+          - get
+          - list
+          - patch
+          - delete
+          - update
+        - apiGroups:
+          - ""
+          - extensions
+          - networking.k8s.io
+          resources:
+          - ingresses/status
+          - services/status
+          - routes/status
+          verbs:
+          - replace
+          - update
+          - patch
+        - apiGroups:
+          - k8s.cni.cncf.io
+          resources:
+          - network-attachment-definitions
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - apiextensions.k8s.io
+          resources:
+          - customresourcedefinitions
+          verbs:
+          - create
+          - get
+          - list
+          - patch
+          - update
+          - watch
+          - delete
+        - apiGroups:
+          - ""
+          - extensions
+          - networking.k8s.io
+          resources:
+          - deployments
+          - endpoints
+          - ingressclasses
+          - nodes
+          - pods/log
+          - replicationcontrollers
+          - secrets
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - vmware.com
+          resources:
+          - loadbalancers
+          - loadbalancers/status
+          - nsxlbmonitors
+          - nsxlbmonitors/status
+          - virtualnetworkinterfaces
+          - virtualnetworkinterfaces/status
+          - virtualnetworks
+          - virtualnetworks/status
+          verbs:
+          - create
+          - get
+          - list
+          - patch
+          - update
+          - watch
+          - delete
+        - apiGroups:
+          - policy
+          resources:
+          - podsecuritypolicies
+          verbs:
+          - create
+          - get
+          - list
+          - patch
+          - update
+          - watch
+          - delete
+          - use
+        serviceAccountName: nsx-ncp-operator
+    strategy: deployment
+  installModes:
+  - supported: true
+    type: OwnNamespace
+  - supported: true
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: false
+    type: AllNamespaces
+  keywords:
+  - networking
+  - security
+  maintainers:
+  - email: sorlando@vmware.com
+    name: Salvatore Orlando
+  - email: jsui@vmware.com
+    name: Jianwei Sui
+  maturity: alpha
+  provider:
+    name: VMware
+  version: 3.2.0
