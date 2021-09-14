@@ -25,6 +25,10 @@ build:
 bin:
 	GOOS=linux $(GO) build -o $(BINDIR)/$(OPERATOR_NAME) $(GOFLAGS) -ldflags '$(LDFLAGS)' ./cmd/manager
 
+.PHONY: bundle
+bundle:
+	./bundle/generate_bundle.sh --bundle-repo $(BUNDLE_REPO) --bundle-image $(BUNDLE_IMG_NAME) --bundle-version $(BUNDLE_VERSION)
+
 .PHONY: test-unit
 test-unit:
 	GOOS=linux $(GO) test -race -cover github.com/vmware/nsx-container-plugin-operator/pkg...
