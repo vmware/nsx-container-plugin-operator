@@ -925,8 +925,9 @@ spec:
           - name: host-os-release
             mountPath: /host/etc/os-release
           # mount ovs runtime files to stop running OVS kmod
-          - name: openvswitch
+          - name: host-var-run
             mountPath: /var/run/openvswitch
+            subPath: openvswitch
           # Uncomment these mounts if installing NSX-OVS kernel module
         #   # mount host lib modules to install OVS kernel module if needed
         #   - name: host-modules
@@ -963,9 +964,7 @@ spec:
             name: host-var-log-ujo
 
       containers:
-        - name: nsx-dummy
-          # This container is of no use.
-          # Docker image for NCP
+        - name: nsx-host-ovs-monitor
 
 
           image: "{{.NcpImage}}"
@@ -973,7 +972,26 @@ spec:
 
           imagePullPolicy: IfNotPresent
           # override NCP image entrypoint
-          command: ["/bin/bash", "-c", "while true; do sleep 5; done"]
+          command: ["start_host_ovs_monitor"]
+          securityContext:
+            # to move the IP from ovs_bridge to ovs_uplink_port
+            capabilities:
+              add:
+                - NET_ADMIN
+          volumeMounts:
+          # required to read the ovs_uplink_port
+          - name: projected-volume
+            mountPath: /etc/nsx-ujo
+          # mount host's OS info to identify host OS
+          - name: host-os-release
+            mountPath: /host/etc/os-release
+          # mount ovs runtime files to stop running OVS kmod
+          - name: host-var-run
+            mountPath: /host/var/run
+
+          - mountPath: /var/log/nsx-ujo
+            name: host-var-log-ujo
+
       volumes:
         - name: projected-volume
           projected:
@@ -995,9 +1013,9 @@ spec:
         - name: host-os-release
           hostPath:
             path: /etc/os-release
-        - name: openvswitch
+        - name: host-var-run
           hostPath:
-            path: /var/run/openvswitch
+            path: /var/run
         # Uncomment these volumes if installing NSX-OVS kernel module
         # - name: host-modules
         #   hostPath:
@@ -1234,7 +1252,7 @@ spec:
                 # host before the installation. This allows livenessProbe to
                 # succeed and container won't restart frequently.
                 - check_pod_liveness nsx-ovs 10
-            initialDelaySeconds: 10
+            initialDelaySeconds: 40
             periodSeconds: 10
             timeoutSeconds: 10
           volumeMounts:
