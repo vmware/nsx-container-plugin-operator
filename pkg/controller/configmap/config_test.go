@@ -89,6 +89,7 @@ func TestFillDefaults(t *testing.T) {
 	assert.Equal(t, "10.0.0.0/24", cfg.Section("nsx_v3").Key("container_ip_blocks").Value())
 	assert.Equal(t, "3", cfg.Section("nsx_node_agent").Key("waiting_before_cni_response").Value())
 	assert.Equal(t, "1500", cfg.Section("nsx_node_agent").Key("mtu").Value())
+	assert.Equal(t, "True", cfg.Section("nsx_node_agent").Key("enable_ovs_mcast_snooping").Value())
 }
 
 func TestAppendErrorIfNotNil(t *testing.T) {
