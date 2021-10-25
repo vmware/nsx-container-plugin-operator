@@ -187,6 +187,9 @@ rules:
    - extensions
    - networking.k8s.io
    - apps
+
+   - config.openshift.io
+
    resources:
      - deployments
      - endpoints
@@ -202,6 +205,10 @@ rules:
 
 
      - routes
+
+
+     - network
+     - networks
 
    verbs:
      - get
@@ -306,7 +313,12 @@ rules:
 
 
 
-
+ - apiGroups:
+   - config.openshift.io
+   resources:
+     - networks
+   verbs:
+     - patch
  - apiGroups:
    - route.openshift.io
    resources:
