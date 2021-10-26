@@ -194,6 +194,7 @@ spec:
           - ""
           - extensions
           - networking.k8s.io
+          - apps
           resources:
           - namespaces
           - ingresses
@@ -201,6 +202,7 @@ spec:
           - pods
           - networkpolicies
           - routes
+          - statefulsets
           verbs:
           - get
           - watch
@@ -256,6 +258,7 @@ spec:
           - ""
           - extensions
           - networking.k8s.io
+          - apps
           resources:
           - deployments
           - endpoints
@@ -264,6 +267,7 @@ spec:
           - pods/log
           - replicationcontrollers
           - secrets
+          - statefulsets
           verbs:
           - get
           - list
