@@ -2,19 +2,9 @@ apiVersion: operators.coreos.com/v1alpha1
 kind: ClusterServiceVersion
 metadata:
   annotations:
-    alm-examples: |-
-     [
-       {
-         "apiVersion": "operator.nsx.vmware.com/v1",
-         "kind": "NcpInstall",
-         "metadata": {
-           "name": "ncp-install"
-         },
-         "spec": {
-           "ncpReplicas": 1
-         }
-       } 
-     ]
+    alm-examples: "[\n  {\n    \"apiVersion\": \"operator.nsx.vmware.com/v1\",\n    \"kind\":
+      \"NcpInstall\",\n    \"metadata\": {\n      \"name\": \"ncp-install\"\n    },\n
+      \   \"spec\": {\n      \"ncpReplicas\": 1\n    }\n  } \n]"
     capabilities: Seamless Upgrades
     categories: Networking, Security
     certified: "True"
@@ -31,61 +21,61 @@ metadata:
     support: VMware
   name: nsx-container-plugin-operator.v3.2.0
 spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: NcpInstall is the Schema for the ncpinstalls API
+      displayName: NcpInstall
+      kind: NcpInstall
+      name: ncpinstalls.operator.nsx.vmware.com
+      resources:
+      - kind: Deployment
+        name: A Kubernetes Deployment for the Operator
+        version: v1
+      - kind: Configmap
+        name: A Configmap with parameter for setting up Operands
+        version: v1
+      - kind: NcpInstall
+        name: this operator's CR
+        version: v1
+      - kind: ClusterOperator
+        name: nsx-ncp cluster operator
+        version: v1
+      - kind: Network
+        name: Openshift's cluster network
+        version: v1
+      - kind: Daemonset
+        name: A Daemonset
+        version: v1
+      - kind: Pod
+        name: A Pod
+        version: v1
+      - kind: Secret
+        name: It's a secret, I can't tell you
+        version: v1
+      - kind: Node
+        name: A Kubernetes Node
+        version: v1
+      - kind: Status
+        name: A Kubernetes resource status
+        version: v1
+      specdescriptors:
+      - description: the replica numbers for the nsx-ncp deployment
+        path: ncpReplicas
+      statusdescriptors:
+      - description: standard conditions field for Kubernetes resources
+        path: conditions
+      version: v1
   description: An operator which provides NSX as default network for an Openshit cluster.
     Simplifies the process of installing and upgrading the NSX Container plugin (NCP)
     components running in the Openshift cluster. The operator also allows for detailed
     monitoring of NCP components and reacts to configuration changes.
   displayName: NSX Container Plugin Operator
-  apiservicedefinitions: {}
-  customresourcedefinitions:
-    owned:
-      - kind: NcpInstall
-        name: ncpinstalls.operator.nsx.vmware.com
-        version: v1
-        description: NcpInstall is the Schema for the ncpinstalls API
-        displayName: NcpInstall
-        specdescriptors:
-        - description: the replica numbers for the nsx-ncp deployment
-          path: ncpReplicas
-        statusdescriptors:
-        - description: standard conditions field for Kubernetes resources
-          path: conditions
-        resources:
-          - kind: Deployment
-            name: A Kubernetes Deployment for the Operator
-            version: v1
-          - kind: Configmap
-            name: A Configmap with parameter for setting up Operands
-            version: v1
-          - kind: NcpInstall
-            name: this operator's CR
-            version: v1
-          - kind: ClusterOperator
-            name: nsx-ncp cluster operator
-            version: v1
-          - kind: Network
-            name: Openshift's cluster network
-            version: v1
-          - kind: Daemonset
-            name: A Daemonset
-            version: v1
-          - kind: Pod
-            name: A Pod
-            version: v1
-          - kind: Secret
-            name: It's a secret, I can't tell you
-            version: v1
-          - kind: Node
-            name: A Kubernetes Node
-            version: v1
-          - kind: Status
-            name: A Kubernetes resource status
-            version: v1 
   install:
     spec:
       deployments:
       - name: nsx-ncp-operator
-        spec:
+        template:
           replicas: 1
           selector:
             matchLabels:
@@ -237,6 +227,7 @@ spec:
           - extensions
           - networking.k8s.io
           - config.openshift.io
+          - apps
           resources:
           - deployments
           - endpoints
@@ -248,6 +239,7 @@ spec:
           - routes
           - network
           - networks
+          - statefulsets
           verbs:
           - get
           - watch
@@ -264,6 +256,7 @@ spec:
           - ""
           - extensions
           - networking.k8s.io
+          - apps
           resources:
           - namespaces
           - ingresses
@@ -271,6 +264,7 @@ spec:
           - pods
           - networkpolicies
           - routes
+          - statefulsets
           verbs:
           - get
           - watch
