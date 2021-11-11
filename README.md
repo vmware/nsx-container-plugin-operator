@@ -1,3 +1,22 @@
+- [NSX Container Plugin Operator](#nsx-container-plugin-operator)
+  - [Overview](#overview)
+  - [Try it out](#try-it-out)
+    - [Preparing the operator image](#preparing-the-operator-image)
+    - [Installing](#installing)
+      - [Kubernetes](#kubernetes)
+      - [Openshift](#openshift)
+        - [Installing a cluster with user-provisioned infrastructure](#installing-a-cluster-with-user-provisioned-infrastructure)
+        - [Installing a cluster with installer-provisioned infrastructure](#installing-a-cluster-with-installer-provisioned-infrastructure)
+    - [Upgrade](#upgrade)
+  - [Documentation](#documentation)
+    - [Cluster network config (Openshift specific)](#cluster-network-config-openshift-specific)
+    - [Operator ConfigMap](#operator-configmap)
+      - [Kubernetes](#kubernetes-1)
+      - [OpenShift](#openshift-1)
+    - [NCP Image](#ncp-image)
+    - [Unsafe changes](#unsafe-changes)
+  - [Contributing](#contributing)
+  - [License](#license)
 # NSX Container Plugin Operator
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -28,7 +47,7 @@ the `network.config.openshift.io` CR to update the container network CIDRs used 
 
 ## Try it out
 
-### Pull or Build Image
+### Preparing the operator image
 
 Pull the packed image for docker:
 ```
@@ -50,7 +69,7 @@ make all
 At the moment the nsx-container-plugin operator only works on native Kubernetes
 or Openshift 4 environments
 
-### Deploy
+### Installing
 
 #### Kubernetes
 
@@ -58,29 +77,132 @@ Edit the operator yaml files in `deploy/kubernetes` then apply them.
 
 #### Openshift
 
+##### Installing a cluster with user-provisioned infrastructure
+
+1. Preparing install-config.yaml
 Generate install-config.yaml by using openshift-install command.
 ```
-$ openshift-install --dir=MY_CLUSTER create install-config
+$ openshift-install --dir=$MY_CLUSTER create install-config
 ```
 
-Edit `MY_CLUSTER/install-config.yaml` to update networking section.
+Edit `$MY_CLUSTER/install-config.yaml` to update networking section.
 Change `networkType` to `ncp`(case insensitive).
-Set container network CIDRs `clusterNetwork` in `MY_CLUSTER/install-config.yaml`.
+Set container network CIDRs `clusterNetwork` in `$MY_CLUSTER/install-config.yaml`.
 
-Create manifest files:
+2. Creating manifest files:
 ```
-$ openshift-install --dir=MY_CLUSTER create manifests
+$ openshift-install --dir=$MY_CLUSTER create manifests
 ```
-Put operator yaml files from `deploy/openshift4/` to `MY_CLUSTER/manifests`,
+Put operator yaml files from `deploy/openshift4/` to `$MY_CLUSTER/manifests`,
 edit configmap.yaml about operator configurations, add the operator image and
 NCP image in operator.yaml.
 
-Generate ignition configuration files:
+3. Generating ignition configuration files:
 ```
-$ openshift-install --dir=MY_CLUSTER create ignition-configs
+$ openshift-install --dir=$MY_CLUSTER create ignition-configs
 ```
 This bootstrap ignition file will be added to the terraform tfvars.
 Then use terraform to install Openshift 4 cluster on vSphere.
+
+##### Installing a cluster with installer-provisioned infrastructure
+
+1. Prepare install-config.yaml
+This step is similar to UPI installation. An example of install-config.yaml:
+
+```
+apiVersion: v1
+baseDomain: openshift.test
+compute:
+- architecture: amd64
+  hyperthreading: Enabled
+  name: worker
+  platform: {}
+  replicas: 3
+controlPlane:
+  architecture: amd64
+  hyperthreading: Enabled
+  name: master
+  platform: {}
+  replicas: 3
+metadata:
+  creationTimestamp: null
+  name: ipi
+networking:
+  networkType: ncp
+  clusterNetwork:
+  - cidr: 10.0.0.0/14
+    hostPrefix: 24
+  machineCIDR: 192.168.10.0/24
+  serviceNetwork:
+  - 172.8.0.0/16
+platform:
+  vsphere:
+    apiVIP: 192.168.10.11
+    cluster: cluster
+    datacenter: dc
+    defaultDatastore: vsanDatastore
+    ingressVIP: 192.168.10.12
+    network: openshift-segment
+    password: pass
+    username: user
+    vCenter: my-vc.local
+publish: External
+pullSecret: 'xxx'
+sshKey: 'ssh-rsa xxx'
+```
+
+You can validate your DNS configuration
+before installing OpenShift Container Platform on IPI. A sample DNS zone database
+as follow:
+
+```
+$TTL    604800
+
+$ORIGIN openshift.test.
+@       IN      SOA     dns1.openshift.test. root.openshift.test. (
+                              2         ; Serial
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+; main domain name servers
+@       IN      NS      localhost.
+@       IN      A       127.0.0.1
+@       IN      AAAA    ::1
+        IN      NS      dns1.openshift.test.
+
+; recors for name servers above
+dns1    IN      A       10.92.204.129
+
+; sub-domain definitions
+$ORIGIN ipi.openshift.test.
+api IN A 192.168.10.11
+apps IN A 192.168.10.12
+
+; sub-domain definitions
+$ORIGIN apps.ipi.openshift.test.
+* IN A 192.168.10.12
+```
+
+2. Preparing manifest files:
+
+Put operator yaml files from `deploy/openshift4/` to `$MY_CLUSTER/manifests`,
+edit configmap.yaml about operator configurations, add the operator image and
+NCP image in operator.yaml.
+
+3.  Creating cluster
+```
+$ openshift-install create cluster --dir=$MY_CLUSTER
+```
+
+The installation log locates in $MY_CLUSTER/.openshift_install.log.
+If the deployment ends in timeout or failure, you can check the environment
+according to the log, then Re-run Installer to continue to get the installation
+log:
+
+```
+$ openshift-install wait-for install-complete
+```
 
 ### Upgrade
 
