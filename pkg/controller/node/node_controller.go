@@ -348,7 +348,7 @@ func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 		return nil, errors.Errorf("failed to get NSX config from operator ConfigMap")
 	}
 	data := configMap.Data
-	cfg, err := ini.Load([]byte(data[operatortypes.ConfigMapDataKey]))
+	cfg, err := ini.LoadSources(ini.LoadOptions{SpaceBeforeInlineComment: true}, []byte(data[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		return nil, err
 	}
@@ -516,8 +516,8 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Addresses: nodeAddresses,
-			Success: false,
-			Reason:  fmt.Sprintf("Failed to create NSX config for node %s: %v", nodeName, err),
+			Success:   false,
+			Reason:    fmt.Sprintf("Failed to create NSX config for node %s: %v", nodeName, err),
 		}
 		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
@@ -529,8 +529,8 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Addresses: nodeAddresses,
-			Success: false,
-			Reason:  fmt.Sprintf("Error while achieving external id for node %s: %v", nodeName, err),
+			Success:   false,
+			Reason:    fmt.Sprintf("Error while achieving external id for node %s: %v", nodeName, err),
 		}
 		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
@@ -539,8 +539,8 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Addresses: nodeAddresses,
-			Success: false,
-			Reason:  fmt.Sprintf("Error while achieving attachment ids for node %s: %v", nodeName, err),
+			Success:   false,
+			Reason:    fmt.Sprintf("Error while achieving attachment ids for node %s: %v", nodeName, err),
 		}
 		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
@@ -549,8 +549,8 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Addresses: nodeAddresses,
-			Success: false,
-			Reason:  fmt.Sprintf("Error while achieving ports for node %s: %v", nodeName, err),
+			Success:   false,
+			Reason:    fmt.Sprintf("Error while achieving ports for node %s: %v", nodeName, err),
 		}
 		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
@@ -559,8 +559,8 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Addresses: nodeAddresses,
-			Success: false,
-			Reason:  fmt.Sprintf("Error while achieving port with specific address for node %s: %v", nodeName, err),
+			Success:   false,
+			Reason:    fmt.Sprintf("Error while achieving port with specific address for node %s: %v", nodeName, err),
 		}
 		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
@@ -568,7 +568,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	nodeNameScope := "ncp/node_name"
 	clusterScope := "ncp/cluster"
 	anyUpdate := false
-	for _, lsp := range(lsps) {
+	for _, lsp := range lsps {
 		foundNodeTag := false
 		foundClusterTag := false
 		for _, tag := range lsp.Tags {
@@ -597,8 +597,8 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 		if err != nil {
 			cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 				Addresses: nodeAddresses,
-				Success: false,
-				Reason:  fmt.Sprintf("Failed to update port %s for node %s: %v", lsp.Id, nodeName, err),
+				Success:   false,
+				Reason:    fmt.Sprintf("Failed to update port %s for node %s: %v", lsp.Id, nodeName, err),
 			}
 			r.status.SetFromNodes(cachedNodeSet)
 			return reconcile.Result{}, err
@@ -607,8 +607,8 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	}
 	cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 		Addresses: nodeAddresses,
-		Success: true,
-		Reason:  "",
+		Success:   true,
+		Reason:    "",
 	}
 	r.status.SetFromNodes(cachedNodeSet)
 	if !anyUpdate {
