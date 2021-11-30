@@ -393,7 +393,7 @@ func deletePods(pods []corev1.Pod, c client.Client) bool {
 	allPodsDeleted := true
 	for _, pod := range pods {
 		err := c.Delete(
-			context.TODO(), &pod, client.GracePeriodSeconds(60),
+			context.TODO(), &pod, client.GracePeriodSeconds(operatortypes.DefaultNodeAgentTermGracePeriod),
 			client.PropagationPolicy(policy))
 		if err != nil {
 			log.Error(err, fmt.Sprintf("Unable to delete pod %v. Its "+

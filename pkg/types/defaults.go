@@ -4,8 +4,9 @@
 package types
 
 const (
-	NcpDefaultReplicas int = 1
-	DefaultMTU         int = 1500
+	NcpDefaultReplicas              int = 1
+	DefaultMTU                      int = 1500
+	DefaultNodeAgentTermGracePeriod int = 60
 )
 
 var NcpSections = []string{"DEFAULT", "ha", "k8s", "coe", "nsx_v3", "vc"}
