@@ -460,7 +460,7 @@ func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	if r.sharedInfo.AddNodeTag == false {
-		reqLogger.Info("Tagging node logical switch ports was disabled")
+		reqLogger.Info("Tagging node logical switch ports was deactivated")
 		return reconcile.Result{}, nil
 	}
 	reqLogger.Info("Reconciling Node")
