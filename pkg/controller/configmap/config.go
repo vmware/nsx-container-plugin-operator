@@ -327,7 +327,7 @@ func Render(configmap *corev1.ConfigMap, ncpReplicas *int32, nsxSecret *corev1.S
 	}
 
 	if !haEnabled && *ncpReplicas != 1 {
-		log.Info(fmt.Sprintf("Set nsx-ncp deployment replicas to 1 instead of %d as HA is disabled",
+		log.Info(fmt.Sprintf("Set nsx-ncp deployment replicas to 1 instead of %d as HA is deactivated",
 			*ncpReplicas))
 		*ncpReplicas = 1
 	}

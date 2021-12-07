@@ -14,7 +14,7 @@ type NcpInstallSpec struct {
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
 
 	// Replicas number for nsx-ncp deployment
-	// Operator will ignore the value if NCP HA is disabled
+	// Operator will ignore the value if NCP HA is deactivated
 	// +kubebuilder:validation:Minimum=1
 	// +optional
 	NcpReplicas int32 `json:"ncpReplicas,omitempty"`
