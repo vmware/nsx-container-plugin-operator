@@ -735,6 +735,10 @@ spec:
                   values:
                   - nsx-networking
               topologyKey: "kubernetes.io/hostname"
+      
+      # nodeSelector is configured by operator ncp-install CRD
+      nodeSelector:
+        {{ .NcpNodeSelector }}
 
       containers:
         - name: nsx-ncp

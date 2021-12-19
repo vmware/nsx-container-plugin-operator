@@ -6,3 +6,7 @@ metadata:
 spec:
   ncpReplicas: 1
   addNodeTag: false
+  nsx-ncp:
+    # Uncomment below to add specific nodeSelector for nsx-ncp component
+    #nodeSelector:
+      #<node_label_key>: <node_label_value>

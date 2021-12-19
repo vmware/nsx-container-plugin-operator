@@ -20,6 +20,13 @@ type NcpInstallSpec struct {
 	NcpReplicas int32 `json:"ncpReplicas,omitempty"`
 	// For tagging node logical switch ports with node name and cluster
 	AddNodeTag bool `json:"addNodeTag,omitempty"`
+	// For configuring nsx-ncp Deployment properties
+	NsxNcpSpec NsxNcpDeploymentSpec `json:"nsx-ncp,omitempty"`
+}
+
+// NsxNcpDeploymentSpec define user configured properties for NCP Deployment
+type NsxNcpDeploymentSpec struct {
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 }
 
 // NcpInstallStatus defines the observed state of NcpInstall
