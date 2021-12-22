@@ -7,6 +7,31 @@ spec:
   ncpReplicas: 1
   addNodeTag: false
   nsx-ncp:
-    # Uncomment below to add specific nodeSelector for nsx-ncp component
+    # Uncomment below to add user-defined nodeSelector for NCP Deployment
     #nodeSelector:
       #<node_label_key>: <node_label_value>
+    tolerations:
+      # Please don't modify below default tolerations for NCP Deployment
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+      - key: node.kubernetes.io/network-unavailable
+        effect: NoSchedule
+
+      # Uncomment below to add user-defined tolerations for NCP Deployment
+      #<toleration_specification>
+      
+  nsx-node-agent:
+    tolerations:
+      # Please don't modify below default tolerations
+      # for nsx-ncp-bootstrap and nsx-node-agent DaemonSet
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+      - key: node.kubernetes.io/not-ready
+        effect: NoSchedule
+      - key: node.kubernetes.io/unreachable
+        effect: NoSchedule
+      - operator: Exists
+        effect: NoExecute
+      
+      # Uncomment below to add user-defined tolerations for nsx-ncp-bootstrap and nsx-node-agent DaemonSet
+      #<toleration_specification>

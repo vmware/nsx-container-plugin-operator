@@ -38,7 +38,7 @@ type Adaptor interface {
 	getNetworkConfig(r *ReconcileConfigMap) (*configv1.Network, error)
 }
 
-type ConfigMap struct {}
+type ConfigMap struct{}
 
 type ConfigMapK8s struct {
 	ConfigMap
@@ -291,6 +291,7 @@ func getPrefixFromCIDR(cidr string) (uint32, error) {
 }
 
 func Render(configmap *corev1.ConfigMap, ncpReplicas *int32, ncpNodeSelector *map[string]string,
+	ncpTolerations *[]corev1.Toleration, nsxNodeAgentDsTolerations *[]corev1.Toleration,
 	nsxSecret *corev1.Secret, lbSecret *corev1.Secret) ([]*unstructured.Unstructured, error) {
 	log.Info("Starting render phase")
 	objs := []*unstructured.Unstructured{}
@@ -346,6 +347,30 @@ func Render(configmap *corev1.ConfigMap, ncpReplicas *int32, ncpNodeSelector *ma
 		renderData.Data[operatortypes.NcpNodeSelectorRenderKey] = ""
 	}
 
+	// Set NCP Tolerations
+	if ncpTolerations != nil {
+		jsonStr, err := json.Marshal(ncpTolerations)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get NCP Tolerations")
+		}
+		// Convert ncpTolerations to string
+		renderData.Data[operatortypes.NcpTolerationsRenderKey] = string(jsonStr)
+	} else {
+		renderData.Data[operatortypes.NcpTolerationsRenderKey] = ""
+	}
+
+	// Set Nsx Node Agent Ds Tolerations
+	if nsxNodeAgentDsTolerations != nil {
+		jsonStr, err := json.Marshal(nsxNodeAgentDsTolerations)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get Nsx Node Agent Tolerations")
+		}
+		// Convert nsxNodeAgentDsTolerations to string
+		renderData.Data[operatortypes.NsxNodeTolerationsRenderKey] = string(jsonStr)
+	} else {
+		renderData.Data[operatortypes.NsxNodeTolerationsRenderKey] = ""
+	}
+
 	// Set LB secret
 	if lbSecret != nil {
 		renderData.Data[operatortypes.LbCertRenderKey] = base64.StdEncoding.EncodeToString(lbSecret.Data["tls.crt"])
@@ -396,7 +421,7 @@ func GetManifestDir() (string, error) {
 		return "./manifest/openshift4/coreos", nil
 	} else if strings.Contains(osRelease, "Ubuntu") {
 		return "./manifest/kubernetes/ubuntu", nil
-	} else if (strings.Contains(osRelease, "CentOS") || strings.Contains(osRelease, "Red Hat")) {
+	} else if strings.Contains(osRelease, "CentOS") || strings.Contains(osRelease, "Red Hat") {
 		return "./manifest/kubernetes/rhel", nil
 	}
 	return "", errors.Wrap(err, "failed to get os-release")

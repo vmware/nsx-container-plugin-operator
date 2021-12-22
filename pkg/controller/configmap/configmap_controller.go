@@ -248,6 +248,8 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	ncpNodeSelector := ncpInstallCrd.Spec.NsxNcpSpec.NodeSelector
+	ncpTolerations := ncpInstallCrd.Spec.NsxNcpSpec.Tolerations
+	nsxNodeAgentDsTolerations := ncpInstallCrd.Spec.NsxNodeAgentDsSpec.Tolerations
 
 	// Fetch the ConfigMap instance
 	instance := &corev1.ConfigMap{}
@@ -323,7 +325,8 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Render configurations
-	objs, err := Render(instance, &ncpReplicas, &ncpNodeSelector, opNsxSecret, opLbSecret)
+	objs, err := Render(instance, &ncpReplicas, &ncpNodeSelector, &ncpTolerations, &nsxNodeAgentDsTolerations,
+		opNsxSecret, opLbSecret)
 	if err != nil {
 		log.Error(err, "Failed to render configurations")
 		r.status.SetDegraded(statusmanager.OperatorConfig, "RenderConfigError",
@@ -387,6 +390,20 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		}
 	}
 
+	// Check if nsx-node-agent and nsx-ncp-bootstrap DaemonSet changed
+	nsxNodeAgentDsChanged := false
+	nsxNodeAgentDsChanged, err = r.isNsxNodeAgentDsChanged(&nsxNodeAgentDsTolerations)
+	if err != nil {
+		log.Error(err, "Failed to get nsxNodeAgentDsChanged")
+		return reconcile.Result{Requeue: true}, err
+	}
+
+	if !nsxNodeAgentDsChanged {
+		log.Info("no new nsx-node-agent and nsx-ncp-bootstrap DaemonSet need to apply")
+	} else {
+		log.Info("nsx-node-agent and nsx-ncp-bootstrap DaemonSet changed")
+	}
+
 	ncpDeploymentChanged := false
 	if !needChange.ncp && !needChange.agent && !needChange.bootstrap {
 		// Check if NCP_IMAGE or nsx-ncp replicas changed
@@ -394,13 +411,18 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		if err != nil {
 			return reconcile.Result{Requeue: true}, err
 		} else if !anyMonitoredResDeleted {
-			ncpDeploymentChanged, err = r.isNcpDeploymentChanged(ncpReplicas, &ncpNodeSelector)
+			ncpDeploymentChanged, err = r.isNcpDeploymentChanged(ncpReplicas, &ncpNodeSelector, &ncpTolerations)
 			if err != nil {
 				return reconcile.Result{Requeue: true}, err
 			}
 
 			if !ncpDeploymentChanged {
 				log.Info("no new nsx-ncp deployment needs to apply")
+			} else {
+				log.Info("nsx-ncp deployment changed")
+			}
+
+			if !ncpDeploymentChanged && !nsxNodeAgentDsChanged {
 				// Check if network config status must be updated
 				if networkConfigChanged {
 					err = updateNetworkStatus(networkConfig, instance, r)
@@ -412,9 +434,10 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 				}
 				r.status.SetNotDegraded(statusmanager.ClusterConfig)
 				r.status.SetNotDegraded(statusmanager.OperatorConfig)
+
+				// There is no any changes to apply
 				return reconcile.Result{}, nil
 			}
-			log.Info("nsx-ncp deployment changed")
 		}
 	}
 
@@ -621,7 +644,8 @@ func (r *ReconcileConfigMap) isAnyMonitoredNCPResDeleted() (bool, error) {
 	return false, nil
 }
 
-func (r *ReconcileConfigMap) isNcpDeploymentChanged(ncpReplicas int32, ncpNodeSelector *map[string]string) (bool, error) {
+func (r *ReconcileConfigMap) isNcpDeploymentChanged(ncpReplicas int32,
+	ncpNodeSelector *map[string]string, ncpTolerations *[]corev1.Toleration) (bool, error) {
 	ncpDeployment := &appsv1.Deployment{}
 	err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.NsxNcpDeploymentName},
 		ncpDeployment)
@@ -640,7 +664,37 @@ func (r *ReconcileConfigMap) isNcpDeploymentChanged(ncpReplicas int32, ncpNodeSe
 		log.Info(fmt.Sprintf("NCP NodeSelector is changed to %v", *ncpNodeSelector))
 	}
 
-	if prevImage != currImage || ncpReplicas != *ncpDeployment.Spec.Replicas || !isNodeSelectorEqual {
+	prevTolerations := ncpDeployment.Spec.Template.Spec.Tolerations
+	isTolerationsEqual := reflect.DeepEqual(&prevTolerations, ncpTolerations)
+	if isTolerationsEqual == false {
+		log.Info(fmt.Sprintf("NCP Tolerations is changed to %v", *ncpTolerations))
+	}
+
+	if prevImage != currImage || ncpReplicas != *ncpDeployment.Spec.Replicas ||
+		!isNodeSelectorEqual || !isTolerationsEqual {
+		return true, nil
+	}
+	return false, nil
+}
+
+func (r *ReconcileConfigMap) isNsxNodeAgentDsChanged(nsxNodeAgentDsTolerations *[]corev1.Toleration) (bool, error) {
+	nsxNodeAgentDs := &appsv1.DaemonSet{}
+	err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.NsxNodeAgentDsName},
+		nsxNodeAgentDs)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return true, nil
+		}
+		return false, err
+	}
+
+	prevTolerations := nsxNodeAgentDs.Spec.Template.Spec.Tolerations
+	isTolerationsEqual := reflect.DeepEqual(prevTolerations, *nsxNodeAgentDsTolerations)
+	if isTolerationsEqual == false {
+		log.Info(fmt.Sprintf("Nsx Node Agent DaemonSet Tolerations is changed to %v", *nsxNodeAgentDsTolerations))
+	}
+
+	if !isTolerationsEqual {
 		return true, nil
 	}
 	return false, nil

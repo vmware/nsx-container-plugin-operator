@@ -212,8 +212,12 @@ func TestRender(t *testing.T) {
 	var lbSecret *corev1.Secret
 	var ncpReplicas int32 = 1
 	var ncpNodeSelector *map[string]string
+	var ncpTolerations *[]corev1.Toleration
+	var nsxNodeAgentDsTolerations *[]corev1.Toleration
 
-	objs, err := Render(mockConfigMap, &ncpReplicas, ncpNodeSelector, nsxSecret, lbSecret)
+	objs, err := Render(mockConfigMap, &ncpReplicas, ncpNodeSelector,
+		ncpTolerations, nsxNodeAgentDsTolerations,
+		nsxSecret, lbSecret)
 	assert.Empty(t, objs)
 	assert.Error(t, err, "failed to render manifests")
 }

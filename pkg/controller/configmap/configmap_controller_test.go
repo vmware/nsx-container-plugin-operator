@@ -256,13 +256,95 @@ func NewFakeReconcileConfigMap() *ReconcileConfigMap {
 func TestConfigMapController_isNcpDeploymentChanged(t *testing.T) {
 	r := NewFakeReconcileConfigMap()
 	// NCP deployment not found case
-	ncpChanged, _ := r.isNcpDeploymentChanged(1, nil)
+	ncpChanged, _ := r.isNcpDeploymentChanged(1, nil, nil)
 	assert.Equal(t, true, ncpChanged)
 
 	container := corev1.Container{Image: "fakeImage"}
 	var replicas int32 = 1
 	var ncpNodeSelector = map[string]string{"nodekey": "master"}
+	var ncpTolerations = []corev1.Toleration{
+		{
+			Key:      "Key",
+			Operator: "Equal",
+			Value:    "Value",
+			Effect:   "NoEffect",
+		},
+	}
+
 	ncpDeployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nsx-ncp",
+			Namespace: "nsx-system",
+		},
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers:   []corev1.Container{container},
+					NodeSelector: ncpNodeSelector,
+					Tolerations:  ncpTolerations,
+				},
+			},
+			Replicas: &replicas,
+		},
+	}
+	r.client.Create(context.TODO(), ncpDeployment)
+
+	// Image no change case
+	os.Setenv("NCP_IMAGE", "fakeImage")
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &ncpTolerations)
+	assert.Equal(t, false, ncpChanged)
+
+	// Replicas change case
+	ncpChanged, _ = r.isNcpDeploymentChanged(3, &ncpNodeSelector, &ncpTolerations)
+	assert.Equal(t, true, ncpChanged)
+
+	//Image change case
+	os.Setenv("NCP_IMAGE", "fakeNewImage")
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &ncpTolerations)
+	assert.Equal(t, true, ncpChanged)
+
+	// NodeSelector no change case
+	os.Setenv("NCP_IMAGE", "fakeImage")
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &ncpTolerations)
+	assert.Equal(t, false, ncpChanged)
+
+	// NodeSelector change case
+	newNodeSelector := map[string]string{
+		"nodekey":  "master",
+		"nodekey1": "vm",
+	}
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &newNodeSelector, &ncpTolerations)
+	assert.Equal(t, true, ncpChanged)
+
+	// NodeSelector change case when ncpNodeSelector passing empty []
+	emptyNodeSelector := map[string]string{}
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &emptyNodeSelector, &ncpTolerations)
+	assert.Equal(t, true, ncpChanged)
+
+	// Node Tolerations no change case
+	os.Setenv("NCP_IMAGE", "fakeImage")
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &ncpTolerations)
+	assert.Equal(t, false, ncpChanged)
+
+	// Node Tolerations change case
+	var newTolerations = []corev1.Toleration{
+		{
+			Key:      "Key2",
+			Operator: "Equal",
+			Value:    "Value2",
+			Effect:   "NoEffect",
+		},
+	}
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &newTolerations)
+	assert.Equal(t, true, ncpChanged)
+
+	// Node Tolerations change case when passing empty []
+	var emptyTolerations []corev1.Toleration
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &emptyTolerations)
+	assert.Equal(t, true, ncpChanged)
+
+	// Node Tolerations no change case when tolerations passed by empty []
+	ncpDeployment = &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "nsx-ncp",
 			Namespace: "nsx-system",
@@ -277,39 +359,83 @@ func TestConfigMapController_isNcpDeploymentChanged(t *testing.T) {
 			Replicas: &replicas,
 		},
 	}
-	r.client.Create(context.TODO(), ncpDeployment)
 
-	// Image no change case
-	os.Setenv("NCP_IMAGE", "fakeImage")
-	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector)
+	r.client.Update(context.TODO(), ncpDeployment)
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &emptyTolerations)
 	assert.Equal(t, false, ncpChanged)
 
-	// Replicas change case
-	ncpChanged, _ = r.isNcpDeploymentChanged(3, &ncpNodeSelector)
-	assert.Equal(t, true, ncpChanged)
+}
 
-	//Image change case
-	os.Setenv("NCP_IMAGE", "fakeNewImage")
-	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector)
-	assert.Equal(t, true, ncpChanged)
+func TestConfigMapController_isNsxNodeAgentDsChanged(t *testing.T) {
+	r := NewFakeReconcileConfigMap()
+	// Nsx Node Agent DaemonSet not found case
+	nsxNodeAgentChanged, _ := r.isNsxNodeAgentDsChanged(nil)
+	assert.Equal(t, true, nsxNodeAgentChanged)
 
-	// NodeSelector no change case
-	os.Setenv("NCP_IMAGE", "fakeImage")
-	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector)
-	assert.Equal(t, false, ncpChanged)
-
-	// NodeSelector change case
-	newNodeSelector := map[string]string{
-		"nodekey":  "master",
-		"nodekey1": "vm",
+	container := corev1.Container{Image: "fakeImage"}
+	var nsxNodeAgentTolerations = []corev1.Toleration{
+		{
+			Key:      "Key",
+			Operator: "Equal",
+			Value:    "Value",
+			Effect:   "NoEffect",
+		},
 	}
-	ncpChanged, _ = r.isNcpDeploymentChanged(1, &newNodeSelector)
-	assert.Equal(t, true, ncpChanged)
-	
-	// NodeSelector change case when ncpNodeSelector passing empty []
-	emptyNodeSelector := map[string]string{}
-	ncpChanged, _ = r.isNcpDeploymentChanged(1, &emptyNodeSelector)
-	assert.Equal(t, true, ncpChanged)
+
+	nsxNodeAgentDs := &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nsx-node-agent",
+			Namespace: "nsx-system",
+		},
+		Spec: appsv1.DaemonSetSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers:  []corev1.Container{container},
+					Tolerations: nsxNodeAgentTolerations,
+				},
+			},
+		},
+	}
+	r.client.Create(context.TODO(), nsxNodeAgentDs)
+
+	// Nsx Node Agent Tolerations no change case
+	nsxNodeAgentChanged, _ = r.isNsxNodeAgentDsChanged(&nsxNodeAgentTolerations)
+	assert.Equal(t, false, nsxNodeAgentChanged)
+
+	// Nsx Node Agent Tolerations change case
+	var newTolerations = []corev1.Toleration{
+		{
+			Key:      "Key2",
+			Operator: "Equal",
+			Value:    "Value2",
+			Effect:   "NoEffect",
+		},
+	}
+	nsxNodeAgentChanged, _ = r.isNsxNodeAgentDsChanged(&newTolerations)
+	assert.Equal(t, true, nsxNodeAgentChanged)
+
+	// Nsx Node Agent Tolerations change case when passing empty []
+	var emptyTolerations []corev1.Toleration
+	nsxNodeAgentChanged, _ = r.isNsxNodeAgentDsChanged(&emptyTolerations)
+	assert.Equal(t, true, nsxNodeAgentChanged)
+
+	// Nsx Node Agent Tolerations no change case when tolerations passed by empty []
+	nsxNodeAgentDs = &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nsx-node-agent",
+			Namespace: "nsx-system",
+		},
+		Spec: appsv1.DaemonSetSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{container},
+				},
+			},
+		},
+	}
+	r.client.Update(context.TODO(), nsxNodeAgentDs)
+	nsxNodeAgentChanged, _ = r.isNsxNodeAgentDsChanged(&emptyTolerations)
+	assert.Equal(t, false, nsxNodeAgentChanged)
 }
 
 func TestConfigMapController_isSecretChanged(t *testing.T) {
