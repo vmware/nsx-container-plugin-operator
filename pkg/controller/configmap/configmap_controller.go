@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -246,6 +247,8 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		r.sharedInfo.AddNodeTag = addNodeTag
 	}
 
+	ncpNodeSelector := ncpInstallCrd.Spec.NsxNcpSpec.NodeSelector
+
 	// Fetch the ConfigMap instance
 	instance := &corev1.ConfigMap{}
 	instanceName := types.NamespacedName{
@@ -320,7 +323,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Render configurations
-	objs, err := Render(instance, &ncpReplicas, opNsxSecret, opLbSecret)
+	objs, err := Render(instance, &ncpReplicas, &ncpNodeSelector, opNsxSecret, opLbSecret)
 	if err != nil {
 		log.Error(err, "Failed to render configurations")
 		r.status.SetDegraded(statusmanager.OperatorConfig, "RenderConfigError",
@@ -391,7 +394,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 		if err != nil {
 			return reconcile.Result{Requeue: true}, err
 		} else if !anyMonitoredResDeleted {
-			ncpDeploymentChanged, err = r.isNcpDeploymentChanged(ncpReplicas)
+			ncpDeploymentChanged, err = r.isNcpDeploymentChanged(ncpReplicas, &ncpNodeSelector)
 			if err != nil {
 				return reconcile.Result{Requeue: true}, err
 			}
@@ -454,7 +457,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 				}
 			}
 		}
-		// Redeploy nsx-node-agent pods when detecting configmap sections impacting on nsx-node-agent
+		// Redeploy nsx-ncp-bootstrap pods when detecting configmap sections impacting on nsx-ncp-bootstrap
 		if appliedConfigMap != nil && needChange.bootstrap {
 			if name == operatortypes.NsxNcpBootstrapDsName && namespace == operatortypes.NsxNamespace {
 				if err = patchObjSpecAnnotations(obj, operatortypes.NsxNcpBootstrapDsName); err != nil {
@@ -550,7 +553,7 @@ func deleteExistingPods(c client.Client, component string) error {
 	return nil
 }
 
-// Patch deployment or Ds: "spec:template" field to trigger k8s to redeploy pods with 
+// Patch deployment or Ds: "spec:template" field to trigger k8s to redeploy pods with
 // updated spec using a rolling update strategy, which is default setting.
 func patchObjSpecAnnotations(obj *unstructured.Unstructured, component string) error {
 	template, found, err := unstructured.NestedMap(obj.Object, "spec", "template")
@@ -618,7 +621,7 @@ func (r *ReconcileConfigMap) isAnyMonitoredNCPResDeleted() (bool, error) {
 	return false, nil
 }
 
-func (r *ReconcileConfigMap) isNcpDeploymentChanged(ncpReplicas int32) (bool, error) {
+func (r *ReconcileConfigMap) isNcpDeploymentChanged(ncpReplicas int32, ncpNodeSelector *map[string]string) (bool, error) {
 	ncpDeployment := &appsv1.Deployment{}
 	err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.NsxNcpDeploymentName},
 		ncpDeployment)
@@ -630,7 +633,14 @@ func (r *ReconcileConfigMap) isNcpDeploymentChanged(ncpReplicas int32) (bool, er
 	}
 	prevImage := ncpDeployment.Spec.Template.Spec.Containers[0].Image
 	currImage := os.Getenv(operatortypes.NcpImageEnv)
-	if prevImage != currImage || ncpReplicas != *ncpDeployment.Spec.Replicas {
+
+	prevNodeSelector := ncpDeployment.Spec.Template.Spec.NodeSelector
+	isNodeSelectorEqual := reflect.DeepEqual(&prevNodeSelector, ncpNodeSelector)
+	if isNodeSelectorEqual == false {
+		log.Info(fmt.Sprintf("NCP NodeSelector is changed to %v", *ncpNodeSelector))
+	}
+
+	if prevImage != currImage || ncpReplicas != *ncpDeployment.Spec.Replicas || !isNodeSelectorEqual {
 		return true, nil
 	}
 	return false, nil

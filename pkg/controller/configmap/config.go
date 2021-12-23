@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -289,8 +290,8 @@ func getPrefixFromCIDR(cidr string) (uint32, error) {
 	return uint32(i), nil
 }
 
-func Render(configmap *corev1.ConfigMap, ncpReplicas *int32, nsxSecret *corev1.Secret,
-	lbSecret *corev1.Secret) ([]*unstructured.Unstructured, error) {
+func Render(configmap *corev1.ConfigMap, ncpReplicas *int32, ncpNodeSelector *map[string]string,
+	nsxSecret *corev1.Secret, lbSecret *corev1.Secret) ([]*unstructured.Unstructured, error) {
 	log.Info("Starting render phase")
 	objs := []*unstructured.Unstructured{}
 
@@ -332,6 +333,18 @@ func Render(configmap *corev1.ConfigMap, ncpReplicas *int32, nsxSecret *corev1.S
 		*ncpReplicas = 1
 	}
 	renderData.Data[operatortypes.NcpReplicasKey] = *ncpReplicas
+
+	// Set NCP NodeSelector
+	if ncpNodeSelector != nil {
+		jsonStr, err := json.Marshal(ncpNodeSelector)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get NCP NodeSelector")
+		}
+		// Convert ncpNodeSelector to string
+		renderData.Data[operatortypes.NcpNodeSelectorRenderKey] = string(jsonStr)
+	} else {
+		renderData.Data[operatortypes.NcpNodeSelectorRenderKey] = ""
+	}
 
 	// Set LB secret
 	if lbSecret != nil {

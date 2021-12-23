@@ -13,9 +13,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 func TestConfigMapController_deleteExistingPods(t *testing.T) {
@@ -86,7 +86,7 @@ func TestConfigMapController_patchObjSpecAnnotations(t *testing.T) {
 	err = patchObjSpecAnnotations(obj, testname)
 	assert.True(t, err != nil)
 
-	// Patch obj without template emtpy case
+	// Patch obj with template emtpy case
 	obj = &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "apps/v1",
@@ -106,10 +106,10 @@ func TestConfigMapController_patchObjSpecAnnotations(t *testing.T) {
 			},
 		},
 	}
-	
+
 	err = patchObjSpecAnnotations(obj, testname)
 	assert.True(t, err == nil)
-	
+
 	// Verify timestamp field was patched
 	annotations, found, err := unstructured.NestedMap(obj.Object, "spec", "template", "metadata", "annotations")
 	if err != nil || !found || annotations == nil {
@@ -141,10 +141,10 @@ func TestConfigMapController_patchObjSpecAnnotations(t *testing.T) {
 			},
 		},
 	}
-	
+
 	err = patchObjSpecAnnotations(obj, testname)
 	assert.True(t, err == nil)
-    
+
 	// Verify timestamp field was patched
 	annotations, found, err = unstructured.NestedMap(obj.Object, "spec", "template", "metadata", "annotations")
 	if err != nil || !found || annotations == nil {
@@ -256,11 +256,12 @@ func NewFakeReconcileConfigMap() *ReconcileConfigMap {
 func TestConfigMapController_isNcpDeploymentChanged(t *testing.T) {
 	r := NewFakeReconcileConfigMap()
 	// NCP deployment not found case
-	ncpChanged, _ := r.isNcpDeploymentChanged(1)
+	ncpChanged, _ := r.isNcpDeploymentChanged(1, nil)
 	assert.Equal(t, true, ncpChanged)
 
 	container := corev1.Container{Image: "fakeImage"}
 	var replicas int32 = 1
+	var ncpNodeSelector = map[string]string{"nodekey": "master"}
 	ncpDeployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "nsx-ncp",
@@ -268,7 +269,11 @@ func TestConfigMapController_isNcpDeploymentChanged(t *testing.T) {
 		},
 		Spec: appsv1.DeploymentSpec{
 			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{Containers: []corev1.Container{container}}},
+				Spec: corev1.PodSpec{
+					Containers:   []corev1.Container{container},
+					NodeSelector: ncpNodeSelector,
+				},
+			},
 			Replicas: &replicas,
 		},
 	}
@@ -276,16 +281,34 @@ func TestConfigMapController_isNcpDeploymentChanged(t *testing.T) {
 
 	// Image no change case
 	os.Setenv("NCP_IMAGE", "fakeImage")
-	ncpChanged, _ = r.isNcpDeploymentChanged(1)
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector)
 	assert.Equal(t, false, ncpChanged)
 
 	// Replicas change case
-	ncpChanged, _ = r.isNcpDeploymentChanged(3)
+	ncpChanged, _ = r.isNcpDeploymentChanged(3, &ncpNodeSelector)
 	assert.Equal(t, true, ncpChanged)
 
 	//Image change case
 	os.Setenv("NCP_IMAGE", "fakeNewImage")
-	ncpChanged, _ = r.isNcpDeploymentChanged(1)
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector)
+	assert.Equal(t, true, ncpChanged)
+
+	// NodeSelector no change case
+	os.Setenv("NCP_IMAGE", "fakeImage")
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector)
+	assert.Equal(t, false, ncpChanged)
+
+	// NodeSelector change case
+	newNodeSelector := map[string]string{
+		"nodekey":  "master",
+		"nodekey1": "vm",
+	}
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &newNodeSelector)
+	assert.Equal(t, true, ncpChanged)
+	
+	// NodeSelector change case when ncpNodeSelector passing empty []
+	emptyNodeSelector := map[string]string{}
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &emptyNodeSelector)
 	assert.Equal(t, true, ncpChanged)
 }
 

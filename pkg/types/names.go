@@ -19,6 +19,7 @@ const (
 	NodeAgentConfigMapRenderKey  string         = "NSXNodeAgentConfig"
 	NcpImageKey                  string         = "NcpImage"
 	NcpReplicasKey               string         = "NcpReplicas"
+	NcpNodeSelectorRenderKey     string         = "NcpNodeSelector"
 	NsxNodeAgentDsName           string         = "nsx-node-agent"
 	NsxNcpBootstrapDsName        string         = "nsx-ncp-bootstrap"
 	NsxNcpDeploymentName         string         = "nsx-ncp"
