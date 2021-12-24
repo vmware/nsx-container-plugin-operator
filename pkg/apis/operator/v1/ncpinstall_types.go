@@ -2,6 +2,7 @@ package v1
 
 import (
 	configv1 "github.com/openshift/api/config/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -22,11 +23,19 @@ type NcpInstallSpec struct {
 	AddNodeTag bool `json:"addNodeTag,omitempty"`
 	// For configuring nsx-ncp Deployment properties
 	NsxNcpSpec NsxNcpDeploymentSpec `json:"nsx-ncp,omitempty"`
+	// For configuring nsx-ncp-bootstrap and nsx-node-agent DaemonSet properties
+	NsxNodeAgentDsSpec NsxNodeAgentDaemonSetSpec `json:"nsx-node-agent,omitempty"`
 }
 
 // NsxNcpDeploymentSpec define user configured properties for NCP Deployment
 type NsxNcpDeploymentSpec struct {
-	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	NodeSelector map[string]string   `json:"nodeSelector,omitempty"`
+	Tolerations  []corev1.Toleration `json:"tolerations,omitempty"`
+}
+
+// NsxNodeAgentDaemonSetSpec define user configured properties for nsx-ncp-bootstrap and nsx-node-agent DaemonSet
+type NsxNodeAgentDaemonSetSpec struct {
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 }
 
 // NcpInstallStatus defines the observed state of NcpInstall

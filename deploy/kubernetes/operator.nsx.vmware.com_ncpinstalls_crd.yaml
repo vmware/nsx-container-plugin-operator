@@ -53,6 +53,42 @@ spec:
                     additionalProperties:
                       type: string
                     type: object
+                  tolerations:
+                    items:
+                      properties:
+                        effect:
+                          type: string
+                        key:
+                          type: string
+                        operator:
+                          type: string
+                        tolerationSeconds:
+                          format: int64
+                          type: integer
+                        value:
+                          type: string
+                      type: object
+                    type: array
+              nsx-node-agent:
+                description: nsx-node-agent defines what properties users can configure for nsx-ncp-bootstrap and nsx-node-agent DaemonSet
+                type: object
+                properties:
+                  tolerations:
+                    items:
+                      properties:
+                        effect:
+                          type: string
+                        key:
+                          type: string
+                        operator:
+                          type: string
+                        tolerationSeconds:
+                          format: int64
+                          type: integer
+                        value:
+                          type: string
+                      type: object
+                    type: array
           status:
             description: NcpInstallStatus defines the observed state of NcpInstall
             type: object

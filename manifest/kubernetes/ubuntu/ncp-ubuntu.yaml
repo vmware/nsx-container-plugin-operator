@@ -707,12 +707,9 @@ spec:
     spec:
       # NCP shares the host management network.
       hostNetwork: true
+      # tolerations is configured by operator ncp-install CRD
       tolerations:
-        - key: node-role.kubernetes.io/master
-          effect: NoSchedule
-
-        - key: node.kubernetes.io/network-unavailable
-          effect: NoSchedule
+        {{ .NcpTolerations }}
 
       # If configured with ServiceAccount, update the ServiceAccount
       # name below.
@@ -882,15 +879,10 @@ spec:
         version: v1
     spec:
       hostNetwork: true
+      # tolerations is configured by operator ncp-install CRD
       tolerations:
-        - key: node-role.kubernetes.io/master
-          effect: NoSchedule
-        - key: node.kubernetes.io/not-ready
-          effect: NoSchedule
-        - key: node.kubernetes.io/unreachable
-          effect: NoSchedule
-        - operator: Exists
-          effect: NoExecute
+        {{ .NsxNodeAgentTolerations }}
+
       hostPID: true
       # If configured with ServiceAccount, update the ServiceAccount
       # name below.
@@ -1090,15 +1082,10 @@ spec:
       hostNetwork: true
       # Give enough time to save flows and perform stop_ovs
       terminationGracePeriodSeconds: 60
+      # tolerations is configured by operator ncp-install CRD
       tolerations:
-        - key: node-role.kubernetes.io/master
-          effect: NoSchedule
-        - key: node.kubernetes.io/not-ready
-          effect: NoSchedule
-        - key: node.kubernetes.io/unreachable
-          effect: NoSchedule
-        - operator: Exists
-          effect: NoExecute
+        {{ .NsxNodeAgentTolerations }}
+
       # If configured with ServiceAccount, update the ServiceAccount
       # name below.
       serviceAccountName: nsx-node-agent-svc-account
