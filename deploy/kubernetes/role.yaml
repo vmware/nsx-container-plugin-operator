@@ -44,3 +44,6 @@ rules:
 - apiGroups: [policy]
   resources: [podsecuritypolicies]
   verbs: [create, get, list, patch, update, watch, delete, use]
+- apiGroups: ['']
+  resources: [events]
+  verbs: [create, get, list, patch, update, delete]

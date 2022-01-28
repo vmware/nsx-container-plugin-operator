@@ -60,3 +60,6 @@ rules:
 - apiGroups: ['']
   resources: [pods/exec]
   verbs: [get, create]
+- apiGroups: ['']
+  resources: [events]
+  verbs: [create, get, list, patch, update, delete]

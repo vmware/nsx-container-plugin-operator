@@ -257,20 +257,20 @@ rules:
    - extensions
    - networking.k8s.io
    - apps
-
    resources:
      - deployments
      - endpoints
      - pods/log
      - nodes
      - replicationcontrollers
+
      # Remove 'secrets' if not using Native Load Balancer.
      - secrets
+
       # new resource for k8s 1.18
      - ingressclasses
 
      - statefulsets
-
 
 
    verbs:
@@ -313,6 +313,7 @@ rules:
      - list
      - update
      - patch
+
  # NCP needs permission to CRUD custom resource nsxerrors
  - apiGroups:
    # The api group is specified in custom resource definition for nsxerrors
@@ -360,9 +361,20 @@ rules:
      - watch
      - update
 
+
 # OC4 only needs loadbalancer
 
-
+ - apiGroups:
+   - ""
+   resources:
+     - events
+   verbs:
+     - create
+     - get
+     - list
+     - patch
+     - update
+     - delete
 
 
  - apiGroups:
@@ -686,8 +698,8 @@ metadata:
     version: v1
 spec:
   # Active-Standby is supported from NCP 2.4.0 release,
-  # so replica can be more than 1 if NCP HA is enabled.
-  # replica *must be* 1 if NCP HA is disabled.
+  # so replica can be more than 1 if NCP HA is activated.
+  # replica *must be* 1 if NCP HA is deactivated.
   selector:
     matchLabels:
       tier: nsx-networking
@@ -704,12 +716,24 @@ spec:
         tier: nsx-networking
         component: nsx-ncp
         version: v1
+
+      # annotations:
+      #   prometheus.io/scrape: "true"
+      #   prometheus.io/port: "8001"
+
     spec:
       # NCP shares the host management network.
       hostNetwork: true
+
+
+      # nodeSelector is configured by operator ncp-install CRD
+      nodeSelector:
+        {{.NcpNodeSelector}}
+
       # tolerations is configured by operator ncp-install CRD
       tolerations:
-        {{ .NcpTolerations }}
+        {{.NcpTolerations}}
+
 
       # If configured with ServiceAccount, update the ServiceAccount
       # name below.
@@ -732,10 +756,6 @@ spec:
                   values:
                   - nsx-networking
               topologyKey: "kubernetes.io/hostname"
-
-      # nodeSelector is configured by operator ncp-install CRD
-      nodeSelector:
-        {{ .NcpNodeSelector }}
 
       containers:
         - name: nsx-ncp
@@ -807,10 +827,12 @@ spec:
                       path: nsx-cert/tls.crt
                     - key: tls.key
                       path: nsx-cert/tls.key
+
 {{if .NsxCA}}
                     - key: tls.ca
                       path: nsx-cert/tls.ca
 {{end}}
+
 
 
               - secret:
@@ -879,9 +901,12 @@ spec:
         version: v1
     spec:
       hostNetwork: true
+
+
       # tolerations is configured by operator ncp-install CRD
       tolerations:
-        {{ .NsxNodeAgentTolerations }}
+        {{.NsxNodeAgentTolerations}}
+
 
       hostPID: true
       # If configured with ServiceAccount, update the ServiceAccount
@@ -1082,9 +1107,12 @@ spec:
       hostNetwork: true
       # Give enough time to save flows and perform stop_ovs
       terminationGracePeriodSeconds: 60
+
+
       # tolerations is configured by operator ncp-install CRD
       tolerations:
-        {{ .NsxNodeAgentTolerations }}
+        {{.NsxNodeAgentTolerations}}
+
 
       # If configured with ServiceAccount, update the ServiceAccount
       # name below.
