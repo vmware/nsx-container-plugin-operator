@@ -56,6 +56,7 @@ func (adaptor *ConfigMapK8s) FillDefaults(configmap *corev1.ConfigMap, spec *con
 		log.Error(err, "failed to load ConfigMap")
 		return err
 	}
+	appendErrorIfNotNil(&errs, fillDefault(cfg, "coe", "adaptor", "kubernetes", true))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "coe", "enable_snat", "True", false))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "ha", "enable", "True", false))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_node_agent", "mtu", strconv.Itoa(operatortypes.DefaultMTU), false))
