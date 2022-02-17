@@ -93,6 +93,14 @@ Set container network CIDRs `clusterNetwork` in `$MY_CLUSTER/install-config.yaml
 ```
 $ openshift-install --dir=$MY_CLUSTER create manifests
 ```
+
+If one cluster node has multiple VirtualNetworkInterfaces, the operator cannot
+detect which interface should be enabled as the containers' parent interface,
+so the user should edit `deploy/openshift4/operator.nsx.vmware.com_v1_ncpinstall_cr.yaml`
+to set `addNodeTag: false` and manually tag the target node port by
+`scope=ncp/node_name, tag=<node_name>` and `scope=ncp/node_name, tag=<cluster_name>`
+on NSX-T.
+
 Put operator yaml files from `deploy/openshift4/` to `$MY_CLUSTER/manifests`,
 edit configmap.yaml about operator configurations, add the operator image and
 NCP image in operator.yaml.
