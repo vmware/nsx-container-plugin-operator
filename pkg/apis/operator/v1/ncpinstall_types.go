@@ -20,6 +20,7 @@ type NcpInstallSpec struct {
 	// +optional
 	NcpReplicas int32 `json:"ncpReplicas,omitempty"`
 	// For tagging node logical switch ports with node name and cluster
+	// Note that if one node has multiple attached VirtualNetworkInterfaces, this function is not supported and should be set to false.
 	AddNodeTag bool `json:"addNodeTag,omitempty"`
 	// For configuring nsx-ncp Deployment properties
 	NsxNcpSpec NsxNcpDeploymentSpec `json:"nsx-ncp,omitempty"`

@@ -5,6 +5,7 @@ metadata:
   namespace: nsx-system-operator
 spec:
   ncpReplicas: 1
+  # Note that if one node has multiple attached VirtualNetworkInterfaces, this function is not supported and should be set to false
   addNodeTag: true
   nsx-ncp:
     # Uncomment below to add user-defined nodeSelector for NCP Deployment
