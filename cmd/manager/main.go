@@ -44,6 +44,11 @@ func main() {
 	// be added before calling pflag.Parse().
 	pflag.CommandLine.AddFlagSet(zap.FlagSet())
 
+	// metricsBindAddr is the TCP address that the controller should bind to
+	// for serving prometheus metrics.
+	var metricsBindAddr string
+	flag.StringVar(&metricsBindAddr, "metrics-server-bind-address", ":8181", "The address the prometheus metrics server binds to.")
+
 	// Add flags registered by imported packages (e.g. glog and
 	// controller-runtime)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
@@ -78,7 +83,8 @@ func main() {
 
 	// Set default manager options
 	options := manager.Options{
-		Namespace: namespace,
+		Namespace:          namespace,
+		MetricsBindAddress: metricsBindAddr,
 	}
 
 	if namespace != "" && namespace != operatortypes.NsxNamespace {
