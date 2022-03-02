@@ -1203,6 +1203,11 @@ spec:
                   fieldPath: metadata.name
             - name: CONTAINER_NAME
               value: nsx-kube-proxy
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
           livenessProbe:
             exec:
               command:
