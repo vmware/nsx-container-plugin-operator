@@ -395,6 +395,12 @@ func Render(configmap *corev1.ConfigMap, ncpReplicas *int32, ncpNodeSelector *ma
 		renderData.Data[operatortypes.NsxKeyRenderKey] = ""
 		renderData.Data[operatortypes.NsxCARenderKey] = ""
 	}
+	// Set value of use_nsx_ovs_kernel_module
+	if cfg.Section("nsx_node_agent").Key("use_nsx_ovs_kernel_module").Value() == "True" {
+		renderData.Data[operatortypes.UseNsxOvsKernelModule] = true
+	} else {
+		renderData.Data[operatortypes.UseNsxOvsKernelModule] = false
+	}
 	manifestDir, err := GetManifestDir()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get manifestDir")

@@ -950,20 +950,37 @@ spec:
             mountPath: /var/run/openvswitch
             subPath: openvswitch
           # Uncomment these mounts if installing NSX-OVS kernel module
-        #   # mount host lib modules to install OVS kernel module if needed
-        #   - name: host-modules
-        #     mountPath: /lib/modules
-        #   # mount openvswitch database
-        #   - name: host-config-openvswitch
-        #     mountPath: /etc/openvswitch
-        #   - name: dir-tmp-usr-ovs-kmod-backup
-        #   # we move the usr kmod files to this dir temporarily before
-        #   # installing new OVS kmod and/or backing up existing OVS kmod backup
-        #     mountPath: /tmp/nsx_usr_ovs_kmod_backup
+{{if .UseNsxOvsKmod}}
+          # mount host lib modules to install OVS kernel module if needed
+          - name: host-modules
+            mountPath: /lib/modules
+          # mount openvswitch database
+          - name: host-config-openvswitch
+            mountPath: /etc/openvswitch
+          - name: dir-tmp-usr-ovs-kmod-backup
+          # we move the usr kmod files to this dir temporarily before
+          # installing new OVS kmod and/or backing up existing OVS kmod backup
+            mountPath: /tmp/nsx_usr_ovs_kmod_backup
 
-        #   # mount linux headers for compiling OVS kmod
-        #   - name: host-usr-src
-        #     mountPath: /usr/src
+          # mount linux headers for compiling OVS kmod
+          - name: host-usr-src
+            mountPath: /usr/src
+{{else}}
+          # # mount host lib modules to install OVS kernel module if needed
+          # - name: host-modules
+          #   mountPath: /lib/modules
+          # # mount openvswitch database
+          # - name: host-config-openvswitch
+          #   mountPath: /etc/openvswitch
+          # - name: dir-tmp-usr-ovs-kmod-backup
+          # # we move the usr kmod files to this dir temporarily before
+          # # installing new OVS kmod and/or backing up existing OVS kmod backup
+          #   mountPath: /tmp/nsx_usr_ovs_kmod_backup
+
+          # # mount linux headers for compiling OVS kmod
+          # - name: host-usr-src
+          #   mountPath: /usr/src
+{{end}}
           # mount apparmor files to load the node-agent-apparmor
           - name: app-armor-cache
             mountPath: /var/cache/apparmor
