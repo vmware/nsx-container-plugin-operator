@@ -949,7 +949,6 @@ spec:
           - name: host-var-run
             mountPath: /var/run/openvswitch
             subPath: openvswitch
-          # Uncomment these mounts if installing NSX-OVS kernel module
 {{if .UseNsxOvsKmod}}
           # mount host lib modules to install OVS kernel module if needed
           - name: host-modules
@@ -966,6 +965,7 @@ spec:
           - name: host-usr-src
             mountPath: /usr/src
 {{else}}
+          # Uncomment these mounts if installing NSX-OVS kernel module
           # # mount host lib modules to install OVS kernel module if needed
           # - name: host-modules
           #   mountPath: /lib/modules
