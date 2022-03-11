@@ -1054,6 +1054,21 @@ spec:
         - name: host-var-run
           hostPath:
             path: /var/run
+{{if .UseNsxOvsKmod}}
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
+        - name: host-config-openvswitch
+          hostPath:
+            path: /etc/openvswitch
+        - name: dir-tmp-usr-ovs-kmod-backup
+          hostPath:
+            path: /tmp/nsx_usr_ovs_kmod_backup
+
+        - name: host-usr-src
+          hostPath:
+            path: /usr/src
+{{else}}
         # Uncomment these volumes if installing NSX-OVS kernel module
         # - name: host-modules
         #   hostPath:
@@ -1068,6 +1083,7 @@ spec:
         # - name: host-usr-src
         #   hostPath:
         #     path: /usr/src
+{{end}}
         - name: app-armor-cache
           hostPath:
             path: /var/cache/apparmor

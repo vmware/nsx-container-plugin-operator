@@ -950,6 +950,27 @@ spec:
           - name: host-var-run
             mountPath: /var/run/openvswitch
             subPath: openvswitch
+{{if .UseNsxOvsKmod}}
+          # mount host lib modules to install OVS kernel module if needed
+          - name: host-modules
+            mountPath: /lib/modules
+          # mount openvswitch database
+          - name: host-config-openvswitch
+            mountPath: /etc/openvswitch
+          - name: dir-tmp-usr-ovs-kmod-backup
+          # we move the usr kmod files to this dir temporarily before
+          # installing new OVS kmod and/or backing up existing OVS kmod backup
+            mountPath: /tmp/nsx_usr_ovs_kmod_backup
+
+
+          # mount to which an OVS kmod file is copied.
+          - name: host-usr-share
+            mountPath: /host/usr/share
+          # mount host's depmod to create module dependencies after creating
+          # new OVS kmod files
+          - name: host-depmod
+            mountPath: /sbin/depmod
+{{else}}
           # Uncomment these mounts if installing NSX-OVS kernel module
         #   # mount host lib modules to install OVS kernel module if needed
         #   - name: host-modules
@@ -970,6 +991,7 @@ spec:
         #   # new OVS kmod files
         #   - name: host-depmod
         #     mountPath: /sbin/depmod
+{{end}}
           # mount host's rpm package database to remove nsx-cni if installed
           - name: rpm-lib
             mountPath: /var/lib/rpm
@@ -1038,6 +1060,25 @@ spec:
         - name: host-var-run
           hostPath:
             path: /var/run
+{{if .UseNsxOvsKmod}}
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
+        - name: host-config-openvswitch
+          hostPath:
+            path: /etc/openvswitch
+        - name: dir-tmp-usr-ovs-kmod-backup
+          hostPath:
+            path: /tmp/nsx_usr_ovs_kmod_backup
+
+
+        - name: host-usr-share
+          hostPath:
+            path: /usr/share
+        - name: host-depmod
+          hostPath:
+            path: /sbin/depmod
+{{else}}
         # Uncomment these volumes if installing NSX-OVS kernel module
         # - name: host-modules
         #   hostPath:
@@ -1056,6 +1097,7 @@ spec:
         # - name: host-depmod
         #   hostPath:
         #     path: /sbin/depmod
+{{end}}
         - name: rpm-lib
           hostPath:
             path: /var/lib/rpm

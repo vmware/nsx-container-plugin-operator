@@ -39,7 +39,7 @@ const (
 	NsxCATempPath                string         = "/tmp/nsx.ca"
 	NsxNodeAgentContainerName    string         = "nsx-node-agent"
 	OsReleaseFile                string         = "/host/etc/os-release"
-	UseNsxOvsKernelModule        string         = "UseNsxOvsKmod"
+	NsxOvsKmodRenderKey          string         = "UseNsxOvsKmod"
 	TimeBeforeRecoverNetwork     time.Duration  = 180 * time.Second
 	DefaultResyncPeriod          time.Duration  = 2 * time.Minute
 )

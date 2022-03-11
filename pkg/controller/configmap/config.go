@@ -397,9 +397,9 @@ func Render(configmap *corev1.ConfigMap, ncpReplicas *int32, ncpNodeSelector *ma
 	}
 	// Set value of use_nsx_ovs_kernel_module
 	if cfg.Section("nsx_node_agent").Key("use_nsx_ovs_kernel_module").Value() == "True" {
-		renderData.Data[operatortypes.UseNsxOvsKernelModule] = true
+		renderData.Data[operatortypes.NsxOvsKmodRenderKey] = true
 	} else {
-		renderData.Data[operatortypes.UseNsxOvsKernelModule] = false
+		renderData.Data[operatortypes.NsxOvsKmodRenderKey] = false
 	}
 	manifestDir, err := GetManifestDir()
 	if err != nil {
