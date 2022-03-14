@@ -8,7 +8,7 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Networking, Security
     certified: "True"
-    containerImage: vmware/nsx-container-plugin-operator:3.2.0
+    containerImage: vmware/nsx-container-plugin-operator
     description: An operator which provides NSX as default network for an Openshift
       cluster. Simplifies the process of installing and upgrading the NSX Container
       plugin (NCP) components running in an Openshift cluster. The operator also allows
@@ -19,7 +19,7 @@ metadata:
     marketplace.openshift.io/remote-workflow: https://docs.vmware.com/en/VMware-NSX-T-Data-Center/3.1/ncp-openshift/GUID-1D75FE92-051C-4E30-8903-AF832E854AA7.html
     repository: https://github.com/vmware/nsx-container-plugin/operator
     support: VMware
-  name: nsx-container-plugin-operator.v3.2.0
+  name: nsx-container-plugin-operator
 spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
@@ -89,7 +89,7 @@ spec:
               - command:
                 - /bin/bash
                 - -c
-                - nsx-ncp-operator --zap-time-encoding=iso8601
+                - nsx-ncp-operator --zap-time-encoding=iso8601 --metrics-server-bind-address=:8181
                 env:
                 - name: POD_NAME
                   valueFrom:
@@ -101,7 +101,7 @@ spec:
                   value: nsx-ncp:latest
                 - name: WATCH_NAMESPACE
                   value: nsx-system-operator
-                image: docker.io/vmware/nsx-container-plugin-operator:v3.2.0
+                image: docker.io/vmware/nsx-container-plugin-operator
                 imagePullPolicy: IfNotPresent
                 name: nsx-ncp-operator
                 volumeMounts:
@@ -344,6 +344,17 @@ spec:
           verbs:
           - get
           - create
+        - apiGroups:
+          - ""
+          resources:
+          - events
+          verbs:
+          - create
+          - get
+          - list
+          - patch
+          - update
+          - delete
         serviceAccountName: nsx-ncp-operator
     strategy: deployment
   installModes:
@@ -366,4 +377,4 @@ spec:
   maturity: alpha
   provider:
     name: VMware
-  version: 3.2.0
+  version: ""

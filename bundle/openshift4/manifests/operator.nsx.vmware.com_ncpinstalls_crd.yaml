@@ -46,6 +46,50 @@ spec:
                 description: 'Tag node logical switch port with node name and cluster when set to true, skip tagging when set to false.
                   Note that if one node has multiple attached VirtualNetworkInterfaces, this function is not supported and should be set to false.'
                 type: boolean
+              nsx-ncp:
+                description: nsx-ncp defines what properties users can configure for NCP Deployment
+                type: object
+                properties:
+                  nodeSelector:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  tolerations:
+                    items:
+                      properties:
+                        effect:
+                          type: string
+                        key:
+                          type: string
+                        operator:
+                          type: string
+                        tolerationSeconds:
+                          format: int64
+                          type: integer
+                        value:
+                          type: string
+                      type: object
+                    type: array
+              nsx-node-agent:
+                description: nsx-node-agent defines what properties users can configure for nsx-ncp-bootstrap and nsx-node-agent DaemonSet
+                type: object
+                properties:
+                  tolerations:
+                    items:
+                      properties:
+                        effect:
+                          type: string
+                        key:
+                          type: string
+                        operator:
+                          type: string
+                        tolerationSeconds:
+                          format: int64
+                          type: integer
+                        value:
+                          type: string
+                      type: object
+                    type: array
           status:
             description: NcpInstallStatus defines the observed state of NcpInstall
             type: object

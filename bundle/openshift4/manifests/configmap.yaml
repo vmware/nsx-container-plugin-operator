@@ -220,6 +220,15 @@ data:
     # subnets for no-snat namespace. It only works for policy mode.
     #enable_namespace_subnets = False
 
+    # If true, NCP will collect prometheus metrics and export the metrics
+    # through the prometheus_metrics_port.On VMC metric monitoring will always
+    # be enabled regardless of this option.
+    #enable_prometheus_metrics = False
+
+    # The port number for NCP to expose prometheus metrics.
+    #prometheus_metrics_port = 8001
+
+
 
     [nsx_kube_proxy]
 
@@ -236,6 +245,8 @@ data:
     # Choices: NOTSET DEBUG INFO WARNING ERROR CRITICAL
     #nsxrpc_loglevel = ERROR
 
+    # OVS bridge name
+    ovs_bridge = br-int
 
 
     # The time in seconds for nsx_node_agent to backoff before re-using an
@@ -374,6 +385,7 @@ data:
     #log_firewall_traffic = <None>
 
 
+
     # Option to use native load balancer or not
     use_native_loadbalancer = True
 
@@ -382,10 +394,6 @@ data:
     # will create additional LB when necessary upon K8s Service of type LB
     # creation/update.
     #l4_lb_auto_scaling = True
-
-    # Option to use native load balancer or not when ingress class annotation
-    # is missing. Only effective if use_native_loadbalancer is set to true
-    #default_ingress_class_nsx = True
 
     # Path to the default certificate file for HTTPS load balancing. Must be
     # specified along with lb_priv_key_path option
@@ -548,24 +556,24 @@ data:
     # Choices: PREEMPTIVE NON_PREEMPTIVE
     #failover_mode = NON_PREEMPTIVE
 
-    # Set this to ENABLE to enable NCP enforced pool member limit for all load
-    # balancer servers in cluster. Set this to CRD_LB_ONLY will only enforce
-    # the limit for load balancer servers created using lb CRD. Set this to
-    # DISABLE to turn off all limit checks. This option requires
+    # Set this to ACTIVATE to enable NCP enforced pool member limit for all
+    # load balancer servers in cluster. Set this to CRD_LB_ONLY will only
+    # enforce the limit for load balancer servers created using lb CRD. Set
+    # this to DEACTIVATE to turn off all limit checks. This option requires
     # relax_scale_validation set to True, l4_lb_auto_scaling set to False, and
-    # works on Policy API only. When not disabled, NCP will enforce a pool
-    # member limit on LBS to prevent one LBS from using up all resources on
-    # edge nodes.
-    # Choices: DISABLE ENABLE CRD_LB_ONLY
-    #ncp_enforced_pool_member_limit = DISABLE
+    # works on Policy API only. When activated, NCP will enforce a pool member
+    # limit on LBS to prevent one LBS from using up all resources on edge
+    # nodes.
+    # Choices: DEACTIVATE ACTIVATE CRD_LB_ONLY
+    #ncp_enforced_pool_member_limit = DEACTIVATE
 
     # Maximum number of pool member allowed for each small load balancer
-    # service. Requires ncp_enforced_pool_member_limit set to ENABLE or
+    # service. Requires ncp_enforced_pool_member_limit set to ACTIVATE or
     # CRD_LB_ONLY to take effect.
     #members_per_small_lbs = 2000
 
     # Maximum number of pool member allowed for each medium load balancer
-    # service. Requires ncp_enforced_pool_member_limit set to ENABLE or
+    # service. Requires ncp_enforced_pool_member_limit set to ACTIVATE or
     # CRD_LB_ONLY to take effect.
     #members_per_medium_lbs = 2000
 
@@ -607,6 +615,12 @@ data:
     # is set to cookie. It has no effect if l7_persistence is not set.
     #cookie_name = <None>
 
+
+    # This parameter indicate how firewall is applied to a traffic packet.
+    # Firewall can be bypassed, or be applied to external/internal address of
+    # NAT rule
+    # Choices: MATCH_EXTERNAL_ADDRESS MATCH_INTERNAL_ADDRESS BYPASS
+    #natfirewallmatch = MATCH_INTERNAL_ADDRESS
 
 
     [vc]
