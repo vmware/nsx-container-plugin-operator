@@ -949,6 +949,22 @@ spec:
           - name: host-var-run
             mountPath: /var/run/openvswitch
             subPath: openvswitch
+{{if .UseNsxOvsKmod}}
+          # mount host lib modules to install OVS kernel module if needed
+          - name: host-modules
+            mountPath: /lib/modules
+          # mount openvswitch database
+          - name: host-config-openvswitch
+            mountPath: /etc/openvswitch
+          - name: dir-tmp-usr-ovs-kmod-backup
+          # we move the usr kmod files to this dir temporarily before
+          # installing new OVS kmod and/or backing up existing OVS kmod backup
+            mountPath: /tmp/nsx_usr_ovs_kmod_backup
+
+          # mount linux headers for compiling OVS kmod
+          - name: host-usr-src
+            mountPath: /usr/src
+{{else}}
           # Uncomment these mounts if installing NSX-OVS kernel module
         #   # mount host lib modules to install OVS kernel module if needed
         #   - name: host-modules
@@ -964,6 +980,7 @@ spec:
         #   # mount linux headers for compiling OVS kmod
         #   - name: host-usr-src
         #     mountPath: /usr/src
+{{end}}
           # mount apparmor files to load the node-agent-apparmor
           - name: app-armor-cache
             mountPath: /var/cache/apparmor
@@ -1037,6 +1054,21 @@ spec:
         - name: host-var-run
           hostPath:
             path: /var/run
+{{if .UseNsxOvsKmod}}
+        - name: host-modules
+          hostPath:
+            path: /lib/modules
+        - name: host-config-openvswitch
+          hostPath:
+            path: /etc/openvswitch
+        - name: dir-tmp-usr-ovs-kmod-backup
+          hostPath:
+            path: /tmp/nsx_usr_ovs_kmod_backup
+
+        - name: host-usr-src
+          hostPath:
+            path: /usr/src
+{{else}}
         # Uncomment these volumes if installing NSX-OVS kernel module
         # - name: host-modules
         #   hostPath:
@@ -1051,6 +1083,7 @@ spec:
         # - name: host-usr-src
         #   hostPath:
         #     path: /usr/src
+{{end}}
         - name: app-armor-cache
           hostPath:
             path: /var/cache/apparmor
