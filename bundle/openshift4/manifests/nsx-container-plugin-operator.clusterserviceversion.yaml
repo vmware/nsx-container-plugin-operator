@@ -8,7 +8,7 @@ metadata:
     capabilities: Seamless Upgrades
     categories: Networking, Security
     certified: "True"
-    containerImage: vmware/nsx-container-plugin-operator
+    containerImage: vmware/nsx-container-plugin-operator:3.2.1
     description: An operator which provides NSX as default network for an Openshift
       cluster. Simplifies the process of installing and upgrading the NSX Container
       plugin (NCP) components running in an Openshift cluster. The operator also allows
@@ -19,7 +19,7 @@ metadata:
     marketplace.openshift.io/remote-workflow: https://docs.vmware.com/en/VMware-NSX-T-Data-Center/3.1/ncp-openshift/GUID-1D75FE92-051C-4E30-8903-AF832E854AA7.html
     repository: https://github.com/vmware/nsx-container-plugin/operator
     support: VMware
-  name: nsx-container-plugin-operator
+  name: nsx-container-plugin-operator:v3.2.1
 spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
@@ -101,7 +101,7 @@ spec:
                   value: nsx-ncp:latest
                 - name: WATCH_NAMESPACE
                   value: nsx-system-operator
-                image: docker.io/vmware/nsx-container-plugin-operator
+                image: docker.io/vmware/nsx-container-plugin-operator:v3.2.1
                 imagePullPolicy: IfNotPresent
                 name: nsx-ncp-operator
                 volumeMounts:
@@ -377,4 +377,4 @@ spec:
   maturity: alpha
   provider:
     name: VMware
-  version: ""
+  version: 3.2.1
