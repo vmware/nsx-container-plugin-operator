@@ -36,6 +36,7 @@ spec:
         type: string
         description: The namespace of the k8s object if it is namespaced. None by default
         jsonPath: .spec.error-object-ns
+  preserveUnknownFields: false  
 
   scope: Cluster
   names:
@@ -62,6 +63,7 @@ spec:
         openAPIV3Schema:
           type: object
           x-kubernetes-preserve-unknown-fields: true
+  preserveUnknownFields: false
 
   scope: Cluster
   names:
@@ -86,6 +88,7 @@ spec:
         openAPIV3Schema:
           type: object
           x-kubernetes-preserve-unknown-fields: true
+  preserveUnknownFields: false
 
   scope: Cluster
   names:
@@ -380,6 +383,8 @@ subjects:
    namespace: nsx-system
 
 
+
+
 ---
 # Create Role for NCP to run exec on pods
 kind: Role
@@ -584,6 +589,7 @@ spec:
             mountPath: /var/log/nsx-ujo
 
 
+
       volumes:
 
 
@@ -726,6 +732,8 @@ spec:
             mountPath: /host/opt
           - name: host-var
             mountPath: /host/var
+          - name: host-usr-bin
+            mountPath: /host/usr/bin
           # mounts to which NSX-CNI are copied END
           # mount host's OS info to identify host OS
           - name: host-os-release
@@ -851,6 +859,9 @@ spec:
         - name: host-var-run
           hostPath:
             path: /var/run
+        - name: host-usr-bin
+          hostPath:
+            path: /usr/bin
 {{if .UseNsxOvsKmod}}
         - name: host-modules
           hostPath:
@@ -955,7 +966,6 @@ spec:
       # name below.
       serviceAccountName: nsx-node-agent-svc-account
       containers:
-
         - name: nsx-node-agent
           # Docker image for NCP
 
@@ -1024,7 +1034,6 @@ spec:
           - name: host-var-log-ujo
             mountPath: /var/log/nsx-ujo
 
-
         - name: nsx-kube-proxy
           # Docker image for NCP
 
@@ -1066,17 +1075,14 @@ spec:
                 - DAC_READ_SEARCH
                 - NET_RAW
 
-
           volumeMounts:
           # ncp.ini
           - name: projected-volume
             mountPath: /etc/nsx-ujo
             readOnly: true
-
           # mount openvswitch dir
           - name: openvswitch
             mountPath: /var/run/openvswitch
-
 
           - name: host-var-log-ujo
             mountPath: /var/log/nsx-ujo
@@ -1169,7 +1175,6 @@ spec:
                   items:
                     - key: ncp.ini
                       path: ncp.ini
-
         - name: openvswitch
           hostPath:
             path: /var/run/openvswitch
@@ -1185,7 +1190,6 @@ spec:
         - name: device-plugins
           hostPath:
             path: /var/lib/kubelet/device-plugins/
-
 
         - name: host-var-log-ujo
           hostPath:
@@ -1241,6 +1245,7 @@ spec:
         openAPIV3Schema:
           type: object
           x-kubernetes-preserve-unknown-fields: true
+  preserveUnknownFields: false
 
   scope: Namespaced
   names:
