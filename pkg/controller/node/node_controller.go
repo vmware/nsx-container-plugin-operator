@@ -117,18 +117,27 @@ func getNodeExternalIdByProviderId(nsxClients *NsxClients, nodeName string, prov
 	if len(providerId) != 46 {
 		return "", errors.Errorf("invalid provider ID %s of node %s", providerId, nodeName)
 	}
+	localVarOptionals := make(map[string]interface{})
 	providerId = string([]byte(providerId)[10:])
 	nsxClient := nsxClients.ManagerClient
-	vms, _, err := nsxClient.FabricApi.ListVirtualMachines(nsxClient.Context, nil)
-	if err != nil {
-		return "", err
-	}
-	for _, vm := range vms.Results {
-		for _, computeId := range vm.ComputeIds {
-			// format of computeId: biosUuid:<uuid>
-			if providerId == string([]byte(computeId)[9:]) {
-				return vm.ExternalId, nil
+	for true {
+		vms, _, err := nsxClient.FabricApi.ListVirtualMachines(nsxClient.Context, localVarOptionals)
+		if err != nil {
+			return "", err
+		}
+		for _, vm := range vms.Results {
+			for _, computeId := range vm.ComputeIds {
+				// format of computeId: biosUuid:<uuid>
+				if providerId == string([]byte(computeId)[9:]) {
+					return vm.ExternalId, nil
+				}
 			}
+		}
+		if vms.Cursor == "" {
+			break
+		} else {
+			log.Info(fmt.Sprintf("Continuing to query with cursor %s", vms.Cursor))
+			localVarOptionals["cursor"] = vms.Cursor
 		}
 	}
 	return "", errors.Errorf("no virtual machine matches provider ID %s and hostname %s", providerId, nodeName)
