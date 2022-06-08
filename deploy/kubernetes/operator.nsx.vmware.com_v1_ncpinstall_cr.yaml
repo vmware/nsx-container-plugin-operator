@@ -8,16 +8,18 @@ spec:
   # Note that if one node has multiple attached VirtualNetworkInterfaces, this function is not supported and should not be set to true
   addNodeTag: false
   nsx-ncp:
-    # Uncomment below to add user-defined nodeSelector for NCP Deployment
-    #nodeSelector:
+    nodeSelector:
+      # Uncomment below to add user-defined nodeSelector for NCP Deployment
       #<node_label_key>: <node_label_value>
+
     tolerations:
       # Please don't modify below default tolerations for NCP Deployment
       - key: node-role.kubernetes.io/master
         effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
+        effect: NoSchedule
       - key: node.kubernetes.io/network-unavailable
         effect: NoSchedule
-
       # Uncomment below to add user-defined tolerations for NCP Deployment
       #<toleration_specification>
       
@@ -27,12 +29,13 @@ spec:
       # for nsx-ncp-bootstrap and nsx-node-agent DaemonSet
       - key: node-role.kubernetes.io/master
         effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
+        effect: NoSchedule
       - key: node.kubernetes.io/not-ready
         effect: NoSchedule
       - key: node.kubernetes.io/unreachable
         effect: NoSchedule
       - operator: Exists
         effect: NoExecute
-      
       # Uncomment below to add user-defined tolerations for nsx-ncp-bootstrap and nsx-node-agent DaemonSet
       #<toleration_specification>
