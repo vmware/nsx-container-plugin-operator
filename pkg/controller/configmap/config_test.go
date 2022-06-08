@@ -238,26 +238,58 @@ func TestNeedApplyChange(t *testing.T) {
 	assert.False(t, needChange.bootstrap)
 	assert.Nil(t, err)
 
-	data := &prevConfigMap.Data
-	cfg, _ := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+	preData := &prevConfigMap.Data
+	preCfg, _ := ini.Load([]byte((*preData)[operatortypes.ConfigMapDataKey]))
 
-	cfg.Section("nsx_node_agent").NewKey("ovs_uplink_port", "eth1")
-	cfg.Section("nsx_node_agent").NewKey("mtu", "1600")
-	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+	preCfg.Section("nsx_node_agent").NewKey("ovs_uplink_port", "eth1")
+	preCfg.Section("nsx_node_agent").NewKey("mtu", "1600")
+	(*preData)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(preCfg)
 	needChange, err = NeedApplyChange(currConfigMap, prevConfigMap)
 	assert.False(t, needChange.ncp)
 	assert.True(t, needChange.agent)
 	assert.True(t, needChange.bootstrap)
 	assert.Nil(t, err)
 
-	cfg.Section("nsx_node_agent").DeleteKey("ovs_uplink_port")
-	cfg.Section("nsx_node_agent").DeleteKey("mtu")
-	cfg.Section("k8s").NewKey("loglevel", "DEBUG")
-	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+	preCfg.Section("nsx_node_agent").DeleteKey("ovs_uplink_port")
+	preCfg.Section("nsx_node_agent").DeleteKey("mtu")
+	preCfg.Section("k8s").NewKey("loglevel", "DEBUG")
+
+	(*preData)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(preCfg)
 	needChange, err = NeedApplyChange(currConfigMap, prevConfigMap)
 	assert.True(t, needChange.ncp)
 	assert.True(t, needChange.agent)
 	assert.False(t, needChange.bootstrap)
+	assert.Nil(t, err)
+
+	preCfg.Section("nsx_node_agent").NewKey("ovs_uplink_port", "eth1")
+	preCfg.Section("nsx_node_agent").NewKey("mtu", "1600")
+	(*preData)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(preCfg)
+
+	curData := &currConfigMap.Data
+	curCfg, _ := ini.Load([]byte((*curData)[operatortypes.ConfigMapDataKey]))
+	curCfg.Section("nsx_node_agent").NewKey("ovs_uplink_port", "eth2")
+	curCfg.Section("nsx_node_agent").NewKey("mtu", "1500")
+	curCfg.Section("nsx_v3").NewKey("external_ip_pools_lb", "10.30.0.0/16, IP_1-IP_2")
+	(*curData)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(curCfg)
+	needChange, err = NeedApplyChange(currConfigMap, prevConfigMap)
+	// k8s section remove "loglevel" and nsx_v3 section add "external_ip_pools_lb"
+	assert.True(t, needChange.ncp)
+	assert.True(t, needChange.agent)
+	assert.True(t, needChange.bootstrap)
+	assert.Nil(t, err)
+
+	preCfg.DeleteSection("k8s")
+	preCfg.Section("nsx_v3").NewKey("external_ip_pools_lb", "10.30.0.0/16, IP_1-IP_2")
+	curCfg.Section("k8s").NewKey("loglevel", "INFO")
+	curCfg.DeleteSection("nsx_node_agent")
+	(*preData)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(preCfg)
+	(*curData)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(curCfg)
+	needChange, err = NeedApplyChange(currConfigMap, prevConfigMap)
+	// k8s section removed
+	assert.True(t, needChange.ncp)
+	// nsx_node_agent section removed
+	assert.True(t, needChange.agent)
+	assert.True(t, needChange.bootstrap)
 	assert.Nil(t, err)
 }
 

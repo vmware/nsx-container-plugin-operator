@@ -607,7 +607,7 @@ func patchObjSpecAnnotations(obj *unstructured.Unstructured, component string) e
 		log.Error(err, fmt.Sprintf("Patch Object: %s Spec Template annotations failed", component))
 		return err
 	} else {
-		log.Info(fmt.Sprintf("Update Object: %s Spec Template annotations was successful", component))
+		log.Info(fmt.Sprintf("Patch Object: %s Spec Template annotations were successful", component))
 		return nil
 	}
 }
