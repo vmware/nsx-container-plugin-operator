@@ -445,6 +445,7 @@ func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap)
 	if prevConfig == nil {
 		return podNeedChange{true, true, true}, nil
 	}
+
 	currData := currConfig.Data
 	prevData := prevConfig.Data
 	// Compare the whole data
@@ -469,11 +470,50 @@ func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap)
 		_, err = prevCfg.GetSection(name)
 		if err != nil {
 			if len(currCfg.Section(name).KeyStrings()) != 0 {
+				log.Info(fmt.Sprintf("Section [%s] is added into configmap", name))
 				diffSecs = append(diffSecs, name)
 			}
 			continue
 		}
 		if !reflect.DeepEqual(currCfg.Section(name).KeysHash(), prevCfg.Section(name).KeysHash()) {
+			// Check which configmap option value is changed
+			keys := currCfg.Section(name).KeyStrings()
+			for _, key := range keys {
+				curKeyValue := currCfg.Section(name).Key(key).Value()
+				// Need to hide value for user-sensitive information option
+				keySensitive := false
+				if key == "lb_default_cert_path" || key == "lb_priv_key_path" ||
+					key == "nsx_api_cert_file" || key == "nsx_api_password" ||
+					key == "nsx_api_private_key_file" {
+					keySensitive = true
+				}
+				if prevCfg.Section(name).HasKey(key) {
+					preKeyValue := prevCfg.Section(name).Key(key).Value()
+					if !reflect.DeepEqual(preKeyValue, curKeyValue) {
+						if keySensitive {
+							log.Info(fmt.Sprintf("Section [%s] config option: %s is changed", name, key))
+						} else {
+							log.Info(fmt.Sprintf("Section [%s] config option: %s = %s is changed to %s = %s",
+								name, key, preKeyValue, key, curKeyValue))
+						}
+					}
+				} else {
+					if keySensitive {
+						log.Info(fmt.Sprintf("Section [%s] add/uncomment a new config option: %s",
+							name, key))
+					} else {
+						log.Info(fmt.Sprintf("Section [%s] add/uncomment a new config option: %s = %s",
+							name, key, curKeyValue))
+					}
+				}
+			}
+			keys = prevCfg.Section(name).KeyStrings()
+			for _, key := range keys {
+				if !currCfg.Section(name).HasKey(key) {
+					log.Info(fmt.Sprintf("Section [%s] remove/comment a config option: %s", name, key))
+				}
+			}
+
 			diffSecs = append(diffSecs, name)
 		}
 	}
@@ -482,6 +522,7 @@ func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap)
 		_, err = currCfg.GetSection(name)
 		if err != nil {
 			if len(prevCfg.Section(name).KeyStrings()) != 0 {
+				log.Info(fmt.Sprintf("Section [%s] is removed from configmap", name))
 				diffSecs = append(diffSecs, name)
 			}
 		}
