@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: nsx-ncp-operator
   namespace: nsx-system-operator
+  labels:
+    tier: nsx-networking
 spec:
   replicas: 1
   selector:
@@ -12,6 +14,7 @@ spec:
     metadata:
       labels:
         name: nsx-ncp-operator
+        tier: nsx-networking
     spec:
       hostNetwork: true
       serviceAccountName: nsx-ncp-operator
