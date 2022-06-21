@@ -511,7 +511,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	var nodeAddresses []string
 	reqLogger.Info("Got the node addresses info", "nodeAddresses", nodeAddressesWithType)
 	for _, address := range nodeAddressesWithType {
-		if !inSlice(address.Address, nodeAddresses) {
+		if address.Type != corev1.NodeHostName && !inSlice(address.Address, nodeAddresses) {
 			nodeAddresses = append(nodeAddresses, address.Address)
 		}
 	}
