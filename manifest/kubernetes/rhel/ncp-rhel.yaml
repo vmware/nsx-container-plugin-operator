@@ -950,8 +950,10 @@ spec:
             mountPath: /host/opt
           - name: host-var
             mountPath: /host/var
+
           - name: host-usr-bin
             mountPath: /host/usr/bin
+
           # mounts to which NSX-CNI are copied END
           # mount host's OS info to identify host OS
           - name: host-os-release
@@ -960,6 +962,8 @@ spec:
           - name: host-var-run
             mountPath: /var/run/openvswitch
             subPath: openvswitch
+
+
 {{if .UseNsxOvsKmod}}
           # mount host lib modules to install OVS kernel module if needed
           - name: host-modules
@@ -972,6 +976,12 @@ spec:
           # installing new OVS kmod and/or backing up existing OVS kmod backup
             mountPath: /tmp/nsx_usr_ovs_kmod_backup
 {{end}}
+
+
+
+
+
+
 {{if .UseNsxOvsKmod}}
           # mount to which an OVS kmod file is copied.
           - name: host-usr-share
@@ -981,9 +991,13 @@ spec:
           - name: host-depmod
             mountPath: /sbin/depmod
 {{end}}
+
+
+
           # mount host's rpm package database to remove nsx-cni if installed
           - name: rpm-lib
             mountPath: /var/lib/rpm
+
           - name: usr-lib-rpm
             mountPath: /usr/lib/rpm
           # mount host's modinfo to know if a module is installed on the host
@@ -1049,9 +1063,13 @@ spec:
         - name: host-var-run
           hostPath:
             path: /var/run
+
         - name: host-usr-bin
           hostPath:
             path: /usr/bin
+
+
+
 {{if .UseNsxOvsKmod}}
         - name: host-modules
           hostPath:
@@ -1063,6 +1081,12 @@ spec:
           hostPath:
             path: /tmp/nsx_usr_ovs_kmod_backup
 {{end}}
+
+
+
+
+
+
 {{if .UseNsxOvsKmod}}
         - name: host-usr-share
           hostPath:
@@ -1071,9 +1095,13 @@ spec:
           hostPath:
             path: /sbin/depmod
 {{end}}
+
+
+
         - name: rpm-lib
           hostPath:
             path: /var/lib/rpm
+
         - name: usr-lib-rpm
           hostPath:
             path: /usr/lib/rpm
@@ -1282,7 +1310,7 @@ spec:
                 # host before the installation. This allows livenessProbe to
                 # succeed and container won't restart frequently.
                 - check_pod_liveness nsx-ovs 10
-            initialDelaySeconds: 40
+            initialDelaySeconds: 180
             periodSeconds: 10
             timeoutSeconds: 10
           volumeMounts:
