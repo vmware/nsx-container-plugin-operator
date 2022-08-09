@@ -1,0 +1,24 @@
+name: Certify container with OpenShift
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: 'Version tag'
+        required: true
+        default: 'latest'
+
+jobs:
+  validate_image:
+    runs-on: [ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run container certification
+        env:
+          VERSION: ${{ github.event.inputs.version_tag }}
+          REGISTRY_LOGIN_USERNAME: ${{ secrets.REGISTRY_LOGIN_USERNAME }}
+          REGISTRY_LOGIN_PASSWORD: ${{ secrets.REGISTRY_LOGIN_PASSWORD }}
+          PFLT_PYXIS_API_TOKEN: ${{ secrets.PFLT_PYXIS_API_TOKEN }}
+          PFLT_CERTIFICATION_PROJECT_ID: ${{ secrets.PFLT_CERTIFICATION_PROJECT_ID }}
+        run: |
+          ./hack/certify-operator-ocp.sh
