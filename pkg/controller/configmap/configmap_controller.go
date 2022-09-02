@@ -216,8 +216,10 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 
 	// Fetch ncp-install CRD instance
 	ncpInstallCrd := &operatorv1.NcpInstall{}
-	err := r.client.Get(context.TODO(), types.NamespacedName{Name: operatortypes.NcpInstallCRDName,
-		Namespace: watchedNamespace}, ncpInstallCrd)
+	err := r.client.Get(context.TODO(), types.NamespacedName{
+		Name:      operatortypes.NcpInstallCRDName,
+		Namespace: watchedNamespace,
+	}, ncpInstallCrd)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info(fmt.Sprintf("%s CRD is not found", operatortypes.NcpInstallCRDName))
@@ -492,6 +494,15 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			}
 		}
 
+		// Since PodSecurityPolicy is not supported any longer starting k8s >= v1.25.0,
+		// So, it's good that using runtime k8s version decides to apply PodSecurityPolicy or not
+		if obj.GroupVersionKind().Kind == "PodSecurityPolicy" {
+			if !r.sharedInfo.PodSecurityPolicySupport {
+				log.V(1).Info("PodSecurityPolicy is not supported from k8s >= v1.25.0")
+				continue
+			}
+		}
+
 		if err = apply.ApplyObject(context.TODO(), r.client, obj); err != nil {
 			log.Error(err, fmt.Sprintf("could not apply (%s) %s/%s", obj.GroupVersionKind(), obj.GetNamespace(), obj.GetName()))
 			r.status.SetDegraded(statusmanager.OperatorConfig, "ApplyOperatorConfig",
@@ -629,7 +640,8 @@ func (r *ReconcileConfigMap) isAnyMonitoredNCPResDeleted() (bool, error) {
 	monitoredResNames := []string{
 		operatortypes.NsxNodeAgentDsName,
 		operatortypes.NsxNcpBootstrapDsName,
-		operatortypes.NsxNcpDeploymentName}
+		operatortypes.NsxNcpDeploymentName,
+	}
 	for _, monitoredResName := range monitoredResNames {
 		resExists, err := operatortypes.CheckIfNCPK8sResourceExists(
 			r.client, monitoredResName)
@@ -645,7 +657,8 @@ func (r *ReconcileConfigMap) isAnyMonitoredNCPResDeleted() (bool, error) {
 }
 
 func (r *ReconcileConfigMap) isNcpDeploymentChanged(ncpReplicas int32,
-	ncpNodeSelector *map[string]string, ncpTolerations *[]corev1.Toleration) (bool, error) {
+	ncpNodeSelector *map[string]string, ncpTolerations *[]corev1.Toleration,
+) (bool, error) {
 	ncpDeployment := &appsv1.Deployment{}
 	err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.NsxNcpDeploymentName},
 		ncpDeployment)
