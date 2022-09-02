@@ -497,6 +497,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 		if k8serrors.IsNotFound(err) {
 			reqLogger.Info("Node not found and remove it from cache")
 			delete(cachedNodeSet, nodeName)
+			r.status.SetFromNodes(cachedNodeSet)
 			return reconcile.Result{}, nil
 		}
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
