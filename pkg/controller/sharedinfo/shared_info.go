@@ -12,11 +12,14 @@ import (
 	"gopkg.in/ini.v1"
 
 	configv1 "github.com/openshift/api/config/v1"
-	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	operatorv1 "github.com/vmware/nsx-container-plugin-operator/pkg/apis/operator/v1"
+	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/version"
+	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
@@ -24,16 +27,17 @@ import (
 var log = logf.Log.WithName("shared_info")
 
 type SharedInfo struct {
-	AdaptorName               string
-	AddNodeTag                bool
-	LastNodeAgentStartTime    map[string]time.Time
-	NetworkConfig             *configv1.Network
-	OperatorConfigMap         *corev1.ConfigMap
-	OperatorNsxSecret         *corev1.Secret
+	AdaptorName              string
+	AddNodeTag               bool
+	PodSecurityPolicySupport bool
+	LastNodeAgentStartTime   map[string]time.Time
+	NetworkConfig            *configv1.Network
+	OperatorConfigMap        *corev1.ConfigMap
+	OperatorNsxSecret        *corev1.Secret
 
-	NsxNodeAgentDsSpec        *unstructured.Unstructured
-	NsxNcpBootstrapDsSpec     *unstructured.Unstructured
-	NsxNcpDeploymentSpec      *unstructured.Unstructured
+	NsxNodeAgentDsSpec    *unstructured.Unstructured
+	NsxNcpBootstrapDsSpec *unstructured.Unstructured
+	NsxNcpDeploymentSpec  *unstructured.Unstructured
 }
 
 func New(mgr manager.Manager, operatorNamespace string) (*SharedInfo, error) {
@@ -64,7 +68,7 @@ func New(mgr manager.Manager, operatorNamespace string) (*SharedInfo, error) {
 	}
 	adaptorName := strings.ToLower(cfg.Section("coe").Key("adaptor").Value())
 	ncpinstallName := types.NamespacedName{
-		Name: operatortypes.NcpInstallCRDName,
+		Name:      operatortypes.NcpInstallCRDName,
 		Namespace: watchedNamespace,
 	}
 	ncpInstall := &operatorv1.NcpInstall{}
@@ -78,5 +82,37 @@ func New(mgr manager.Manager, operatorNamespace string) (*SharedInfo, error) {
 	if ncpInstall.Spec.AddNodeTag == false {
 		addNodeTag = false
 	}
-	return &SharedInfo{AdaptorName:adaptorName, AddNodeTag:addNodeTag}, nil
+
+	podSecurityPolicySupport := isPodSecurityPolicySupport(mgr.GetConfig())
+
+	return &SharedInfo{
+		AdaptorName: adaptorName, AddNodeTag: addNodeTag,
+		PodSecurityPolicySupport: podSecurityPolicySupport,
+	}, nil
+}
+
+// PodSecurityPolicy resource is not supported any longer starting k8s >= v1.25.0
+func isPodSecurityPolicySupport(c *rest.Config) bool {
+	version125, _ := version.ParseGeneric("v1.25.0")
+
+	clientset, err := clientset.NewForConfig(c)
+	if err != nil {
+		log.Error(err, "failed to create clientset")
+		return false
+	}
+
+	serverVersion, err := clientset.Discovery().ServerVersion()
+	if err != nil {
+		log.Error(err, "failed to get server Kubernetes version")
+		return false
+	}
+
+	runningVersion, err := version.ParseGeneric(serverVersion.String())
+	if err != nil {
+		log.Error(err, fmt.Sprintf("unexpected error parsing server Kubernetes version %s", runningVersion.String()))
+		return false
+	}
+
+	log.Info(fmt.Sprintf("running server version is %s", runningVersion.String()))
+	return runningVersion.LessThan(version125)
 }
