@@ -294,6 +294,7 @@ data:
     #use_ncp_portmap = False
 
 
+
     [nsx_v3]
 
     # Set NSX API adaptor to NSX Policy API adaptor. If unset, NSX adaptor will
@@ -514,7 +515,8 @@ data:
     # If this value is not empty, NCP will append it to nameserver list
     #dns_servers = []
 
-    # Set this to True to enable NCP to report errors through NSXError CRD.
+    # Set this to True to enable NCP to report errors through NSXError CRD
+    # (only effective in NSX MP API mode).
     #enable_nsx_err_crd = False
 
     # Maximum number of virtual servers allowed to create in cluster for
