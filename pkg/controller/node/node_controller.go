@@ -35,6 +35,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -143,8 +144,8 @@ func getNodeExternalIdByProviderId(nsxClients *NsxClients, nodeName string, prov
 	return "", errors.Errorf("no virtual machine matches provider ID %s and hostname %s", providerId, nodeName)
 }
 
-func listAttachmentsByNodeExternalId(nsxClients *NsxClients, vmExternalId string) ([]string, error) {
-	var attachment_ids []string
+func listAttachmentsByNodeExternalId(nsxClients *NsxClients, vmExternalId string) (sets.String, error) {
+	attachment_ids := sets.NewString()
 	localVarOptionals := make(map[string]interface{})
 	localVarOptionals["ownerVmId"] = vmExternalId
 	nsxClient := nsxClients.ManagerClient
@@ -157,7 +158,7 @@ func listAttachmentsByNodeExternalId(nsxClients *NsxClients, vmExternalId string
 	}
 	for _, vif := range vifs.Results {
 		if vif.LportAttachmentId != "" {
-			attachment_ids = append(attachment_ids, vif.LportAttachmentId)
+			attachment_ids.Insert(vif.LportAttachmentId)
 		}
 	}
 	if len(attachment_ids) == 0 {
@@ -166,10 +167,10 @@ func listAttachmentsByNodeExternalId(nsxClients *NsxClients, vmExternalId string
 	return attachment_ids, nil
 }
 
-func listPortsByAttachmentIds(nsxClients *NsxClients, attachmentIds []string) (*[]nsxtmgr.LogicalPort, error) {
+func listPortsByAttachmentIds(nsxClients *NsxClients, attachmentIds sets.String) (*[]nsxtmgr.LogicalPort, error) {
 	var portList []nsxtmgr.LogicalPort
 	localVarOptionals := make(map[string]interface{})
-	for _, attachmentId := range attachmentIds {
+	for attachmentId := range attachmentIds {
 		localVarOptionals["attachmentId"] = attachmentId
 		nsxClient := nsxClients.ManagerClient
 		log.Info(fmt.Sprintf("Searching logical port for vif attachment %s", attachmentId))
