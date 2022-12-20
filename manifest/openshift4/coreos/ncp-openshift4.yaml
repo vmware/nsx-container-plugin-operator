@@ -1138,6 +1138,12 @@ spec:
           - name: host-var-log-ujo
             mountPath: /var/log/nsx-ujo
 
+          - name: keepalived-conf-dir
+            mountPath: /etc/keepalived
+          - name: static-pods-manifests-dir
+            mountPath: /etc/kubernetes/manifests
+
+
 
       volumes:
         - name: projected-volume
@@ -1198,6 +1204,14 @@ spec:
         - name: nscripts
           hostPath:
             path: /etc/sysconfig/network-scripts
+
+
+        - name: keepalived-conf-dir
+          hostPath:
+            path: /etc/keepalived
+        - name: static-pods-manifests-dir
+          hostPath:
+            path: /etc/kubernetes/manifests
 
 
 

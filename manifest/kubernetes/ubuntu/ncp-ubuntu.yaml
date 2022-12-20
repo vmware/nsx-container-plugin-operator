@@ -1350,6 +1350,7 @@ spec:
             mountPath: /var/log/nsx-ujo
 
 
+
       volumes:
         - name: projected-volume
           projected:
@@ -1396,6 +1397,7 @@ spec:
         - name: host-os-release
           hostPath:
             path: /etc/os-release
+
 
 
 
