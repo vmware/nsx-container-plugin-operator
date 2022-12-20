@@ -1361,6 +1361,7 @@ spec:
             mountPath: /var/log/nsx-ujo
 
 
+
       volumes:
         - name: projected-volume
           projected:
@@ -1420,6 +1421,7 @@ spec:
         - name: nscripts
           hostPath:
             path: /etc/sysconfig/network-scripts
+
 
 
 
