@@ -105,8 +105,8 @@ func (adaptor *ConfigMapOc) FillDefaults(configmap *corev1.ConfigMap, spec *conf
 
 func (adaptor *ConfigMapK8s) validateConfigMap(configmap *corev1.ConfigMap) []error {
 	errs := []error{}
-	data := configmap.Data
-	cfg, err := ini.Load([]byte(data[operatortypes.ConfigMapDataKey]))
+	data := &configmap.Data
+	cfg, err := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		errs = append(errs, errors.Wrapf(err, "failed to load ConfigMap"))
 		return errs
@@ -129,6 +129,16 @@ func (adaptor *ConfigMapK8s) validateConfigMap(configmap *corev1.ConfigMap) []er
 	if err != nil {
 		appendErrorIfNotNil(&errs, errors.Wrapf(err, "mtu is invalid"))
 	}
+	// Check DEFAULT section log_file option
+	if cfg.Section("DEFAULT").Key("log_file").Value() != "" {
+		log.Info(fmt.Sprintf("DEFAULT section option: log_file is not allowed to change, current value:%s is reverted back to default value:None",
+			cfg.Section("DEFAULT").Key("log_file").Value()))
+		// Revert DEFAULT log_file to default value
+		fillDefault(cfg, "DEFAULT", "log_file", "", true)
+		// Write config back to ConfigMap data
+		(*data)[operatortypes.ConfigMapDataKey], err = iniWriteToString(cfg)
+		appendErrorIfNotNil(&errs, err)
+	}
 
 	return errs
 }
@@ -136,8 +146,8 @@ func (adaptor *ConfigMapK8s) validateConfigMap(configmap *corev1.ConfigMap) []er
 func (adaptor *ConfigMapOc) validateConfigMap(configmap *corev1.ConfigMap) []error {
 	// TODO: merge validateConfigMap because most logic are the same
 	errs := []error{}
-	data := configmap.Data
-	cfg, err := ini.Load([]byte(data[operatortypes.ConfigMapDataKey]))
+	data := &configmap.Data
+	cfg, err := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		errs = append(errs, errors.Wrapf(err, "failed to load ConfigMap"))
 		return errs
@@ -157,6 +167,16 @@ func (adaptor *ConfigMapOc) validateConfigMap(configmap *corev1.ConfigMap) []err
 	_, err = strconv.Atoi(mtu)
 	if err != nil {
 		appendErrorIfNotNil(&errs, errors.Wrapf(err, "mtu is invalid"))
+	}
+	// Check DEFAULT section log_file option
+	if cfg.Section("DEFAULT").Key("log_file").Value() != "" {
+		log.Info(fmt.Sprintf("DEFAULT section option: log_file is not allowed to change, current value:%s is reverted back to default value:None",
+			cfg.Section("DEFAULT").Key("log_file").Value()))
+		// Revert DEFAULT log_file to default value
+		fillDefault(cfg, "DEFAULT", "log_file", "", true)
+		// Write config back to ConfigMap data
+		(*data)[operatortypes.ConfigMapDataKey], err = iniWriteToString(cfg)
+		appendErrorIfNotNil(&errs, err)
 	}
 
 	return errs
