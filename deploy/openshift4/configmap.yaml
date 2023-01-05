@@ -174,7 +174,8 @@ data:
     # ALLOW_NAMESPACE_STRICT inherits the behaviors of ALLOW_NAMESPACE, and
     # also restricts service talk to resources outside the cluster. By default,
     # no baseline rule will be created and the cluster will assume the default
-    # behavior as specified by the backend.
+    # behavior as specified by the backend. The option is only supported on
+    # Policy API.
     # Choices: <None> allow_cluster allow_namespace allow_namespace_strict
     #baseline_policy_type = <None>
 
@@ -184,19 +185,6 @@ data:
     # using k8s event
     #enable_ncp_event = False
 
-    # Set this to True to enable multus to create multiple interfaces for one
-    # pod. Requires policy_nsxapi set to True to take effect. If passthrough
-    # interface is used as additional interface, user should deploy the network
-    # device plugin to provide device allocation information for NCP. Pod
-    # annotations with prefix "k8s.v1.cni.cncf.io" cannot be modified once pod
-    # is realized. User defined IP will not be allocated from the Segment
-    # IPPool. The "gateway" in NetworkAttachmentDefinition is not used to
-    # configure secondary interfaces, as the default gateway of Pod is
-    # configured by the primary CNI on the main network interface. User must
-    # define IP and/or MAC if no "ipam" is configured. Only available if node
-    # type is HOSTVM and not to be leveraged in conjunction with 3rd party CNI
-    # plugin
-    #enable_multus = False
 
     # Set this to True to enable NSX restore support (only effective in NSX
     # Policy API mode).
@@ -343,11 +331,12 @@ data:
     #thumbprint = []
 
 
-    # The time in seconds before aborting a HTTP connection to a NSX manager.
+    # The time in seconds before aborting a HTTP connection to NSX manager.
+    # Defaults to 10 seconds, minimum 5seconds.
     #http_timeout = 10
 
-    # The time in seconds before aborting a HTTP read response from a NSX
-    # manager.
+    # The time in seconds (minimum 10 seconds) before aborting a HTTP read
+    # operation from NSX manager.
     #http_read_timeout = 180
 
     # Maximum number of times to retry a HTTP connection.
@@ -372,6 +361,7 @@ data:
 
     # Subnet prefix for v6 IP blocks
     #v6_subnet_prefix = 64
+
 
 
     # Indicates whether distributed firewall DENY rules are logged.
@@ -436,10 +426,21 @@ data:
 
 
 
+    # Option to use ip blocks in order when creating subnets. Default is set to
+    # false. If set to false, a random ip block will be selected from container
+    # ip blocks list. If set to true, first IP Block in the container_ip_blocks
+    # list that has the capacity to allow the creation of subnet will be
+    # selected. Note that if ip blocks were shared by multiple clusters then
+    # the selection in order is not guranteed.
+    #use_ip_blocks_in_order = False
+
 
     # Resource ID of the container ip blocks that will be used for creating
     # subnets for no-SNAT projects. If specified, no-SNAT projects will use
-    # these ip blocks ONLY. Otherwise they will use container_ip_blocks
+    # these ip blocks ONLY. Otherwise they will use container_ip_blocks.If
+    # policy_nsxapi is enabled, it also support automatically creating the IP
+    # blocks. The definition is a comma separated list: CIDR,CIDR,... Mixing
+    # different formats (e.g. UUID,CIDR) is also supported.
     #no_snat_ip_blocks = []
 
     # Name or ID of the external ip pools that will be used for allocating IP
@@ -447,7 +448,7 @@ data:
     # rules. If policy_nsxapi is enabled, it also support automatically
     # creating the ip pools. The definition is a comma separated list:
     # CIDR,IP_1-IP_2,... Mixing different formats (e.g. UUID, CIDR&IP_Range) is
-    # not supported.
+    # also supported.
     #external_ip_pools = []
 
 
@@ -468,7 +469,7 @@ data:
     # allocating IP addresses for Ingress controller and LB service. If
     # policy_nsxapi is enabled, it also supports automatically creating the ip
     # pools. The definition is a comma separated list: CIDR,IP_1-IP_2,...
-    # Mixing different formats (e.g. UUID, CIDR&IP_Range) is not supported.
+    # Mixing different formats (e.g. UUID, CIDR&IP_Range) is also supported.
     #external_ip_pools_lb = []
 
     # Name or ID of the NSX overlay transport zone that will be used for
@@ -559,24 +560,25 @@ data:
     #failover_mode = NON_PREEMPTIVE
 
     # Set this to ACTIVATE to enable NCP enforced pool member limit for all
-    # load balancer servers in cluster. Set this to CRD_LB_ONLY will only
-    # enforce the limit for load balancer servers created using lb CRD. Set
-    # this to DEACTIVATE to turn off all limit checks. This option requires
-    # relax_scale_validation set to True, l4_lb_auto_scaling set to False, and
+    # load balancer servers in cluster. Set this to DEACTIVATE to turn off all
+    # limit checks. This option requires l4_lb_auto_scaling set to False, and
     # works on Policy API only. When activated, NCP will enforce a pool member
     # limit on LBS to prevent one LBS from using up all resources on edge
-    # nodes.
-    # Choices: DEACTIVATE ACTIVATE CRD_LB_ONLY
+    # nodes. Also note that when relax_scale_validation is set to False and
+    # members_per_small_lbs or members_per_medium_lbs set to values higher than
+    # NSX scale limit, NSX scale check kicks in before NCP, making this config
+    # unnecessary.
+    # Choices: DEACTIVATE ACTIVATE
     #ncp_enforced_pool_member_limit = DEACTIVATE
 
     # Maximum number of pool member allowed for each small load balancer
-    # service. Requires ncp_enforced_pool_member_limit set to ACTIVATE or
-    # CRD_LB_ONLY to take effect.
+    # service. Requires ncp_enforced_pool_member_limit set to ACTIVATE to take
+    # effect. The value should be in range [1, 7500].
     #members_per_small_lbs = 2000
 
     # Maximum number of pool member allowed for each medium load balancer
-    # service. Requires ncp_enforced_pool_member_limit set to ACTIVATE or
-    # CRD_LB_ONLY to take effect.
+    # service. Requires ncp_enforced_pool_member_limit set to ACTIVATE  to take
+    # effect. The value should be in range [1, 7500].
     #members_per_medium_lbs = 2000
 
 
