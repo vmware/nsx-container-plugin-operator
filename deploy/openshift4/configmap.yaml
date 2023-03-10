@@ -51,8 +51,6 @@ data:
 
     [coe]
 
-    # Container orchestrator adaptor to plug in.
-    adaptor = openshift4
 
     # Specify cluster for adaptor.
     cluster = openshift

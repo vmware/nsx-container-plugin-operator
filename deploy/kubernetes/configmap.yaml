@@ -51,8 +51,6 @@ data:
 
     [coe]
 
-    # Container orchestrator adaptor to plug in.
-    #adaptor = kubernetes
 
     # Specify cluster for adaptor.
     #cluster = k8scluster

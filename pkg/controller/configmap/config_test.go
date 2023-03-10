@@ -291,6 +291,42 @@ func TestNeedApplyChange(t *testing.T) {
 	assert.True(t, needChange.agent)
 	assert.True(t, needChange.bootstrap)
 	assert.Nil(t, err)
+
+	preCfg.Section("coe").NewKey("cluster", "cluster-1")
+	curCfg.Section("coe").NewKey("cluster", "cluster-1")
+	(*preData)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(preCfg)
+	(*curData)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(curCfg)
+	needChange, err = NeedApplyChange(currConfigMap, prevConfigMap)
+	preCfg.Section("coe").DeleteKey("cluster")
+	curCfg.Section("coe").DeleteKey("cluster")
+	assert.Nil(t, err)
+
+	preCfg.Section("coe").NewKey("cluster", "cluster-1")
+	curCfg.Section("coe").NewKey("cluster", "cluster-2")
+	(*preData)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(preCfg)
+	(*curData)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(curCfg)
+	needChange, err = NeedApplyChange(currConfigMap, prevConfigMap)
+	preCfg.Section("coe").DeleteKey("cluster")
+	curCfg.Section("coe").DeleteKey("cluster")
+	assert.NotNil(t, err)
+
+	preCfg.Section("nsx_v3").NewKey("l4_lb_auto_scaling", "True")
+	curCfg.Section("nsx_v3").NewKey("l4_lb_auto_scaling", "True")
+	(*preData)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(preCfg)
+	(*curData)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(curCfg)
+	needChange, err = NeedApplyChange(currConfigMap, prevConfigMap)
+	preCfg.Section("nsx_v3").DeleteKey("l4_lb_auto_scaling")
+	curCfg.Section("nsx_v3").DeleteKey("l4_lb_auto_scaling")
+	assert.Nil(t, err)
+
+	preCfg.Section("nsx_v3").NewKey("l4_lb_auto_scaling", "True")
+	curCfg.Section("nsx_v3").NewKey("l4_lb_auto_scaling", "False")
+	(*preData)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(preCfg)
+	(*curData)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(curCfg)
+	needChange, err = NeedApplyChange(currConfigMap, prevConfigMap)
+	preCfg.Section("nsx_v3").DeleteKey("l4_lb_auto_scaling")
+	curCfg.Section("nsx_v3").DeleteKey("l4_lb_auto_scaling")
+	assert.NotNil(t, err)
 }
 
 func TestInSlice(t *testing.T) {
