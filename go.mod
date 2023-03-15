@@ -3,12 +3,9 @@ module github.com/vmware/nsx-container-plugin-operator
 go 1.13
 
 require (
-	github.com/Masterminds/sprig v2.22.0+incompatible
+	github.com/Masterminds/sprig v2.22.0+incompatible // indirect
 	github.com/ghodss/yaml v1.0.0
-	github.com/go-openapi/errors v0.19.2
-	github.com/google/martian v2.1.0+incompatible
 	github.com/imdario/mergo v0.3.7
-	github.com/onsi/gomega v1.9.0
 	github.com/openshift/api v3.9.1-0.20191111211345-a27ff30ebf09+incompatible
 	github.com/openshift/cluster-network-operator v0.0.0-20200505233431-0c44782d5245
 	github.com/openshift/library-go v0.0.0-20200511081854-8db3781f6d14
@@ -24,7 +21,7 @@ require (
 	k8s.io/api v0.18.2
 	k8s.io/apimachinery v0.18.3
 	k8s.io/client-go v12.0.0+incompatible
-	k8s.io/code-generator v0.18.6 // indirect
+	k8s.io/kube-openapi v0.0.0-20200410145947-61e04a5be9a6 // indirect
 	k8s.io/kube-proxy v0.18.3 // indirect
 	k8s.io/kubectl v0.17.4
 	sigs.k8s.io/controller-runtime v0.5.2

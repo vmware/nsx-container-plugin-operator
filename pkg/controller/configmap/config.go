@@ -29,6 +29,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
+var immutableFields = []struct {
+	Section string
+	Key     string
+}{
+	{
+		Section: "coe",
+		Key:     "cluster",
+	},
+	{
+		Section: "nsx_v3",
+		Key:     "l4_lb_auto_scaling",
+	},
+}
+
 type Adaptor interface {
 	FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error
 	validateConfigMap(configmap *corev1.ConfigMap) []error
@@ -484,6 +498,13 @@ func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap)
 		log.Error(err, "Failed to load previous ConfigMap")
 		return podNeedChange{false, false, false}, err
 	}
+
+	// Check whether immutable fields are changed. This check should return an error to
+	// make sure that reconcile could be terminated.
+	if immutableFieldChanged(currCfg, prevCfg) {
+		return podNeedChange{}, errors.New("Immutable field can't be changed.")
+	}
+
 	diffSecs := []string{}
 	currSecs := currCfg.SectionStrings()
 	for _, name := range currSecs {
@@ -569,6 +590,16 @@ func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap)
 	}
 
 	return needChange, nil
+}
+
+func immutableFieldChanged(cur, prev *ini.File) bool {
+	for _, field := range immutableFields {
+		if cur.Section(field.Section).Key(field.Key).String() != prev.Section(field.Section).Key(field.Key).String() {
+			log.Info(fmt.Sprintf("Immutable field %s.%s shouldn't be changed, skip applying changes.", field.Section, field.Key))
+			return true
+		}
+	}
+	return false
 }
 
 func inSlice(str string, s []string) bool {

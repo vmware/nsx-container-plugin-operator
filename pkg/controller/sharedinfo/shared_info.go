@@ -6,7 +6,6 @@ package sharedinfo
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"gopkg.in/ini.v1"
@@ -40,33 +39,31 @@ type SharedInfo struct {
 	NsxNcpDeploymentSpec  *unstructured.Unstructured
 }
 
+func getAdaptorName() (string, error) {
+	cfg, err := ini.Load(operatortypes.OsReleaseFile)
+	if err != nil {
+		log.Error(err, fmt.Sprintf("Failed to load os-release from %s.", operatortypes.OsReleaseFile))
+		return "", err
+	}
+	if cfg.Section("").Key("ID").String() == "rhcos" {
+		return "openshift4", nil
+	}
+	return "kubernetes", nil
+}
+
 func New(mgr manager.Manager, operatorNamespace string) (*SharedInfo, error) {
 	reader := mgr.GetAPIReader()
-	configmap := &corev1.ConfigMap{}
 	watchedNamespace := operatorNamespace
 	if watchedNamespace == "" {
 		log.Info(fmt.Sprintf("SharedInfo can only check a single namespace, defaulting to: %s",
 			operatortypes.OperatorNamespace))
 		watchedNamespace = operatortypes.OperatorNamespace
 	}
-	configmapName := types.NamespacedName{
-		Namespace: watchedNamespace,
-		Name:      operatortypes.ConfigMapName,
-	}
-	// r.client.Get cannot work at the stage, the solution of reader referred to
-	// https://github.com/jaegertracing/jaeger-operator/pull/814
-	err := reader.Get(context.TODO(), configmapName, configmap)
+	adaptorName, err := getAdaptorName()
+	log.Info(fmt.Sprintf("adaptor name: %s", adaptorName))
 	if err != nil {
-		log.Error(err, "Failed to get configmap")
 		return nil, err
 	}
-	data := &configmap.Data
-	cfg, err := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
-	if err != nil {
-		log.Error(err, "Failed to get adaptor name")
-		return nil, err
-	}
-	adaptorName := strings.ToLower(cfg.Section("coe").Key("adaptor").Value())
 	ncpinstallName := types.NamespacedName{
 		Name:      operatortypes.NcpInstallCRDName,
 		Namespace: watchedNamespace,
