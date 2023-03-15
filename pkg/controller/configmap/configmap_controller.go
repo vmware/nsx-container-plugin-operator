@@ -59,6 +59,9 @@ func newReconciler(mgr manager.Manager, status *statusmanager.StatusManager, sha
 		status:     status,
 		sharedInfo: sharedInfo,
 	}
+
+	log.Info(fmt.Sprintf("Reconciler get sharedInfo.AdaptorName %s", sharedInfo.AdaptorName))
+
 	if sharedInfo.AdaptorName == "openshift4" {
 		reconcileConfigMap.Adaptor = &ConfigMapOc{}
 	} else {
@@ -307,23 +310,34 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Get nsx-secret and lb-secret
-	var opNsxSecret *corev1.Secret
-	if optionInConfigMap(instance, "nsx_v3", "nsx_api_cert_file") {
-		opNsxSecret = &corev1.Secret{}
-		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: watchedNamespace, Name: operatortypes.NsxSecret}, opNsxSecret)
-		if err != nil {
-			log.Error(err, "Failed to get operator nsx-secret")
-			return reconcile.Result{}, err
-		}
+	opNsxSecret := &corev1.Secret{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: watchedNamespace, Name: operatortypes.NsxSecret}, opNsxSecret)
+	if err != nil {
+		log.Error(err, "Failed to get operator nsx-secret")
+		return reconcile.Result{}, err
 	}
-	var opLbSecret *corev1.Secret
-	if optionInConfigMap(instance, "nsx_v3", "lb_default_cert_path") {
-		opLbSecret = &corev1.Secret{}
-		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: watchedNamespace, Name: operatortypes.LbSecret}, opLbSecret)
+	if opNsxSecret != nil {
+		err = FillNsxAuthCfg(instance, opNsxSecret)
 		if err != nil {
-			log.Error(err, "Failed to get operator lb-secret")
 			return reconcile.Result{}, err
 		}
+	} else {
+		log.Info(fmt.Sprintf("%s is not set", operatortypes.NsxSecret))
+	}
+
+	opLbSecret := &corev1.Secret{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: watchedNamespace, Name: operatortypes.LbSecret}, opLbSecret)
+	if err != nil {
+		log.Error(err, "Failed to get operator lb-secret")
+		return reconcile.Result{}, err
+	}
+	if opLbSecret != nil {
+		err = FillLbCertCfg(instance, opLbSecret)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+	} else {
+		log.Info(fmt.Sprintf("%s is not set", operatortypes.LbSecret))
 	}
 
 	// Render configurations
