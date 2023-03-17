@@ -17,6 +17,7 @@ import (
 
 	"gopkg.in/ini.v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubectl/pkg/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -69,13 +70,13 @@ func getTestReconcileConfigMap(t string) *ReconcileConfigMap {
 
 func TestFillDefaults(t *testing.T) {
 	cidrs := []string{"10.0.0.0/24"}
-	mockConfigMap := createMockConfigMap()
+	mockOcConfigMap := createMockConfigMap()
 	mockNetworkSpec := createMockNetworkSpec(cidrs)
-	data := &mockConfigMap.Data
+	data := &mockOcConfigMap.Data
 
 	r := getTestReconcileConfigMap("openshift4")
 
-	err := r.FillDefaults(mockConfigMap, mockNetworkSpec)
+	err := r.FillDefaults(mockOcConfigMap, mockNetworkSpec)
 	if err != nil {
 		t.Fatalf("failed to fill default config")
 	}
@@ -85,11 +86,28 @@ func TestFillDefaults(t *testing.T) {
 	assert.Equal(t, "True", cfg.Section("nsx_v3").Key("single_tier_topology").Value())
 	assert.Equal(t, "True", cfg.Section("coe").Key("enable_snat").Value())
 	assert.Equal(t, "True", cfg.Section("ha").Key("enable").Value())
-	assert.Equal(t, "False", cfg.Section("k8s").Key("process_oc_network").Value())
 	assert.Equal(t, "10.0.0.0/24", cfg.Section("nsx_v3").Key("container_ip_blocks").Value())
 	assert.Equal(t, "3", cfg.Section("nsx_node_agent").Key("waiting_before_cni_response").Value())
 	assert.Equal(t, "1500", cfg.Section("nsx_node_agent").Key("mtu").Value())
 	assert.Equal(t, "true", cfg.Section("nsx_node_agent").Key("enable_ovs_mcast_snooping").Value())
+
+	mockConfigMap := createMockConfigMap()
+	data = &mockConfigMap.Data
+	r = getTestReconcileConfigMap("kubernetes")
+	err = r.FillDefaults(mockConfigMap, mockNetworkSpec)
+	if err != nil {
+		t.Fatalf("failed to fill default config")
+	}
+	cfg, err = ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+	assert.Equal(t, "kubernetes", cfg.Section("coe").Key("adaptor").Value())
+	assert.Equal(t, "True", cfg.Section("nsx_v3").Key("policy_nsxapi").Value())
+	assert.Equal(t, "", cfg.Section("nsx_v3").Key("single_tier_topology").Value())
+	assert.Equal(t, "True", cfg.Section("coe").Key("enable_snat").Value())
+	assert.Equal(t, "True", cfg.Section("ha").Key("enable").Value())
+	assert.Equal(t, "", cfg.Section("nsx_v3").Key("container_ip_blocks").Value())
+	assert.Equal(t, "", cfg.Section("nsx_node_agent").Key("waiting_before_cni_response").Value())
+	assert.Equal(t, "1500", cfg.Section("nsx_node_agent").Key("mtu").Value())
+	assert.Equal(t, "", cfg.Section("nsx_node_agent").Key("enable_ovs_mcast_snooping").Value())
 }
 
 func TestAppendErrorIfNotNil(t *testing.T) {
@@ -160,6 +178,7 @@ func TestValidateConfigMap(t *testing.T) {
 
 	data := &mockConfigMap.Data
 	cfg, _ := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+	cfg.Section("coe").NewKey("adaptor", "openshift4")
 	cfg.Section("coe").NewKey("cluster", "mockCluster")
 	cfg.Section("nsx_v3").NewKey("nsx_api_managers", "mockIP")
 	cfg.Section("coe").NewKey("enable_snat", "False")
@@ -169,6 +188,95 @@ func TestValidateConfigMap(t *testing.T) {
 
 	errs = r.validateConfigMap(mockConfigMap)
 	assert.Empty(t, errs)
+}
+
+func TestValidateNodeAgentOptions(t *testing.T) {
+	mockConfigMap := createMockConfigMap()
+	data := &mockConfigMap.Data
+	cfg, _ := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+	cfg.Section("nsx_node_agent").NewKey("mtu", "1500")
+	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+
+	errs := validateNodeAgentOptions(mockConfigMap)
+	assert.Empty(t, errs)
+
+	fillDefault(cfg, "nsx_node_agent", "mtu", "s120", true)
+	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+	errs = validateNodeAgentOptions(mockConfigMap)
+	assert.Equal(t, 1, len(errs))
+}
+
+func TestValidateCommonOptions(t *testing.T) {
+	mockConfigMap := createMockConfigMap()
+	data := &mockConfigMap.Data
+	cfg, _ := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+	cfg.Section("DEFAULT").NewKey("log_file", "test.log")
+	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+
+	errs := validateCommonOptions(mockConfigMap)
+	cfg, _ = ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+	// assert.Empty(t, errs)
+	// assert.Equal(t, "", cfg.Section("DEFAULT").Key("log_file").Value())
+	assert.Equal(t, 1, len(errs))
+	assert.Equal(t, "test.log", cfg.Section("DEFAULT").Key("log_file").Value())
+}
+
+func TestValidateUnSupportedOptions(t *testing.T) {
+	mockConfigMap := createMockConfigMap()
+	data := &mockConfigMap.Data
+	cfg, _ := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+
+	// Test MP specific option validation
+	fillDefault(cfg, "nsx_v3", "policy_nsxapi", "True", true)
+	fillDefault(cfg, "nsx_v3", "top_firewall_section_marker", "top", true)
+	fillDefault(cfg, "nsx_v3", "bottom_firewall_section_marker", "bottom", true)
+	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+	errs := validateUnSupportedOptions(mockConfigMap)
+	cfg, _ = ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+	assert.Empty(t, errs)
+	assert.False(t, cfg.Section("nsx_v3").HasKey("top_firewall_section_marker"))
+	assert.False(t, cfg.Section("nsx_v3").HasKey("bottom_firewall_section_marker"))
+
+	// Test WCP specific option validation
+	fillDefault(cfg, "nsx_v3", "dlb_l4_persistence", "cookie", true)
+	// add one non-wcp option
+	fillDefault(cfg, "nsx_v3", "l4_persistence", "cookie", true)
+	fillDefault(cfg, "nsx_v3", "multi_t0", "False", true)
+	fillDefault(cfg, "k8s", "enable_vnet_crd", "True", true)
+	fillDefault(cfg, "k8s", "node_type", "HOSTVM", true)
+	fillDefault(cfg, "vc", "vc_endpoint", "10.10.10.1", true)
+	fillDefault(cfg, "vc", "https_port", "8181", true)
+	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+	cfg, _ = ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+	assert.True(t, cfg.Section("nsx_v3").HasKey("dlb_l4_persistence"))
+	assert.True(t, cfg.Section("nsx_v3").HasKey("multi_t0"))
+	assert.True(t, cfg.Section("k8s").HasKey("enable_vnet_crd"))
+	assert.True(t, cfg.Section("k8s").HasKey("node_type"))
+	assert.True(t, cfg.Section("vc").HasKey("vc_endpoint"))
+	assert.True(t, cfg.Section("vc").HasKey("https_port"))
+	assert.True(t, cfg.Section("nsx_v3").HasKey("l4_persistence"))
+
+	errs = validateUnSupportedOptions(mockConfigMap)
+	cfg, _ = ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+	assert.Empty(t, errs)
+	assert.False(t, cfg.Section("nsx_v3").HasKey("dlb_l4_persistence"))
+	assert.False(t, cfg.Section("nsx_v3").HasKey("multi_t0"))
+	assert.False(t, cfg.Section("k8s").HasKey("enable_vnet_crd"))
+	assert.False(t, cfg.Section("k8s").HasKey("node_type"))
+	assert.False(t, cfg.Section("vc").HasKey("vc_endpoint"))
+	assert.False(t, cfg.Section("vc").HasKey("https_port"))
+	assert.True(t, cfg.Section("nsx_v3").HasKey("l4_persistence"))
+
+	// Test TAS specific option validation
+	cfg.Section(operatortypes.TASSection).NewKey("bbs_poll_interval", "1")
+	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+
+	errs = validateUnSupportedOptions(mockConfigMap)
+	cfg, _ = ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+	assert.Empty(t, errs)
+	sec, err := cfg.GetSection(operatortypes.TASSection)
+	assert.Nil(t, sec)
+	assert.NotNil(t, err)
 }
 
 func TestValidateClusterNetwork(t *testing.T) {
@@ -182,26 +290,32 @@ func TestValidateClusterNetwork(t *testing.T) {
 	assert.Equal(t, 1, len(errs))
 
 	mockNetworkSpec.ClusterNetwork = []configv1.ClusterNetworkEntry{
-		configv1.ClusterNetworkEntry{CIDR: "mockCIDR"}}
+		{CIDR: "mockCIDR"},
+	}
 	errs = r.validateClusterNetwork(mockNetworkSpec)
 	assert.Equal(t, 1, len(errs))
 
 	mockNetworkSpec.ClusterNetwork = []configv1.ClusterNetworkEntry{
-		configv1.ClusterNetworkEntry{CIDR: "10.0.0.0/31"}}
+		{CIDR: "10.0.0.0/31"},
+	}
 	errs = r.validateClusterNetwork(mockNetworkSpec)
 	assert.Equal(t, 2, len(errs))
 
 	mockNetworkSpec.ClusterNetwork = []configv1.ClusterNetworkEntry{
-		configv1.ClusterNetworkEntry{
+		{
 			CIDR:       "10.0.0.0/16",
-			HostPrefix: uint32(12)}}
+			HostPrefix: uint32(12),
+		},
+	}
 	errs = r.validateClusterNetwork(mockNetworkSpec)
 	assert.Equal(t, 1, len(errs))
 
 	mockNetworkSpec.ClusterNetwork = []configv1.ClusterNetworkEntry{
-		configv1.ClusterNetworkEntry{
+		{
 			CIDR:       "10.0.0.0/16",
-			HostPrefix: uint32(24)}}
+			HostPrefix: uint32(24),
+		},
+	}
 	errs = r.validateClusterNetwork(mockNetworkSpec)
 	assert.Empty(t, errs)
 }
@@ -431,4 +545,74 @@ func TestIsMTUChanged(t *testing.T) {
 	cfg.Section("nsx_node_agent").NewKey("mtu", "1600")
 	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
 	assert.True(t, IsMTUChanged(currConfigMap, prevConfigMap))
+}
+
+func TestFillNsxAuthCfg(t *testing.T) {
+	mockConfigMap := createMockConfigMap()
+	data := &mockConfigMap.Data
+
+	mockValue := []byte("mockCrt")
+	nsxSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nsx-secret",
+			Namespace: "nsx-system-operator",
+		},
+		Data: map[string][]byte{
+			"tls.crt": mockValue, "tls.key": mockValue, "tls.ca": mockValue,
+		},
+	}
+
+	FillNsxAuthCfg(mockConfigMap, nsxSecret)
+	cfg, _ := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+
+	assert.Equal(t, "/etc/nsx-ujo/nsx-cert/tls.crt", cfg.Section("nsx_v3").Key("nsx_api_cert_file").Value())
+	assert.Equal(t, "/etc/nsx-ujo/nsx-cert/tls.key", cfg.Section("nsx_v3").Key("nsx_api_private_key_file").Value())
+	assert.Equal(t, "/etc/nsx-ujo/nsx-cert/tls.ca", cfg.Section("nsx_v3").Key("ca_file").Value())
+
+	// Secret with empty value
+	mockSecret := &corev1.Secret{
+		Data: map[string][]byte{"tls.crt": {}, "tls.key": {}, "tls.ca": {}},
+	}
+	fillDefault(cfg, "nsx_v3", "nsx_api_cert_file", "", true)
+	fillDefault(cfg, "nsx_v3", "nsx_api_private_key_file", "", true)
+	fillDefault(cfg, "nsx_v3", "ca_file", "", true)
+	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+	FillNsxAuthCfg(mockConfigMap, mockSecret)
+	cfg, _ = ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+	assert.Equal(t, "", cfg.Section("nsx_v3").Key("nsx_api_cert_file").Value())
+	assert.Equal(t, "", cfg.Section("nsx_v3").Key("nsx_api_private_key_file").Value())
+	assert.Equal(t, "", cfg.Section("nsx_v3").Key("ca_file").Value())
+}
+
+func TestFillLbCertCfg(t *testing.T) {
+	mockConfigMap := createMockConfigMap()
+	data := &mockConfigMap.Data
+
+	mockValue := []byte("mockCrt")
+	lbSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "lb-secret",
+			Namespace: "nsx-system-operator",
+		},
+		Data: map[string][]byte{
+			"tls.crt": mockValue, "tls.key": mockValue,
+		},
+	}
+
+	FillLbCertCfg(mockConfigMap, lbSecret)
+	cfg, _ := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+	assert.Equal(t, "/etc/nsx-ujo/lb-cert/tls.crt", cfg.Section("nsx_v3").Key("lb_default_cert_path").Value())
+	assert.Equal(t, "/etc/nsx-ujo/lb-cert/tls.key", cfg.Section("nsx_v3").Key("lb_priv_key_path").Value())
+
+	// Secret with empty value
+	mockSecret := &corev1.Secret{
+		Data: map[string][]byte{"tls.crt": {}, "tls.key": {}},
+	}
+	fillDefault(cfg, "nsx_v3", "lb_default_cert_path", "", true)
+	fillDefault(cfg, "nsx_v3", "lb_priv_key_path", "", true)
+	(*data)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(cfg)
+	FillLbCertCfg(mockConfigMap, mockSecret)
+	cfg, _ = ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
+	assert.Equal(t, "", cfg.Section("nsx_v3").Key("lb_default_cert_path").Value())
+	assert.Equal(t, "", cfg.Section("nsx_v3").Key("lb_priv_key_path").Value())
 }

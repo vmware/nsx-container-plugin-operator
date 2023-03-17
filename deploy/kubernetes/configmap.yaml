@@ -174,7 +174,7 @@ data:
     # no baseline rule will be created and the cluster will assume the default
     # behavior as specified by the backend. The option is only supported on
     # Policy API.
-    # Choices: <None> allow_cluster allow_namespace allow_namespace_strict
+    # Choices: allow_cluster allow_namespace allow_namespace_strict None NONE none
     #baseline_policy_type = <None>
 
 
@@ -213,6 +213,7 @@ data:
 
     # The port number for NCP to expose prometheus metrics.
     #prometheus_metrics_port = 8001
+
 
 
 
@@ -283,22 +284,10 @@ data:
 
     [nsx_v3]
 
-    # Set NSX API adaptor to NSX Policy API adaptor. If unset, NSX adaptor will
-    # be set to the NSX Manager based adaptor. If unset or False, the NSX
-    # resource ID in other options can be resource name or UUID
-    policy_nsxapi = True
 
 
 
-    # Path to NSX client certificate file. If specified, the nsx_api_user and
-    # nsx_api_password options will be ignored. Must be specified along with
-    # nsx_api_private_key_file option
-    #nsx_api_cert_file = <None>
 
-    # Path to NSX client private key file. If specified, the nsx_api_user and
-    # nsx_api_password options will be ignored. Must be specified along with
-    # nsx_api_cert_file option
-    #nsx_api_private_key_file = <None>
 
     # IP address of one or more NSX managers separated by commas. The IP
     # address should be of the form:
@@ -314,12 +303,6 @@ data:
     # Maximum number of times to retry API requests upon stale revision errors.
     #retries = 10
 
-    # Specify one or a list of CA bundle files to use in verifying the NSX
-    # Manager server certificate. This option is ignored if "insecure" is set
-    # to True. If "insecure" is set to False and "ca_file" is unset, the
-    # "thumbprint" will be used. If "thumbprint" is unset, the system root CAs
-    # will be used to verify the server certificate.
-    #ca_file = []
 
     # Specify one or a list of thumbprint strings to use in verifying the NSX
     # Manager server certificate. This option is ignored if "insecure" is set
@@ -368,7 +351,7 @@ data:
     # 'DENY' will enable logging only for DENY rules. Remove this config if no
     # logging is desired. When IPv6 is enabled this setting will not apply to
     # rules for allowing ND traffic.
-    # Choices: ALL DENY <None>
+    # Choices: ALL DENY None NONE none
     #log_firewall_traffic = <None>
 
 
@@ -382,13 +365,7 @@ data:
     # creation/update.
     #l4_lb_auto_scaling = True
 
-    # Path to the default certificate file for HTTPS load balancing. Must be
-    # specified along with lb_priv_key_path option
-    #lb_default_cert_path = <None>
 
-    # Path to the private key file for default certificate for HTTPS load
-    # balancing. Must be specified along with lb_default_cert_path option
-    #lb_priv_key_path = <None>
 
     # Option to set load balancing algorithm in load balancer pool object.
     # Choices: ROUND_ROBIN LEAST_CONNECTION IP_HASH WEIGHTED_ROUND_ROBIN
@@ -404,7 +381,7 @@ data:
     # Option to set load balancer persistence option. If cookie is selected,
     # cookie persistence will be offered.If source_ip is selected, source IP
     # persistence will be offered for ingress traffic through L7 load balancer
-    # Choices: <None> cookie source_ip
+    # Choices: cookie source_ip None NONE none
     #l7_persistence = <None>
 
     # An integer for LoadBalancer side timeout value in seconds on layer 7
@@ -414,7 +391,7 @@ data:
     # Option to set load balancer persistence option. If source_ip is selected,
     # source IP persistence will be offered for ingress traffic through L4 load
     # balancer
-    # Choices: <None> source_ip
+    # Choices: source_ip None NONE none
     #l4_persistence = <None>
 
 
@@ -495,16 +472,10 @@ data:
     # present and its set to INSERT, LB will append client_ip to
     # x_forwarded_for in the header. If not wanting to use x_forwarded_for,
     # remove this config
-    # Choices: <None> INSERT REPLACE
+    # Choices: INSERT REPLACE None NONE none
     #x_forwarded_for = <None>
 
-    # Resource ID of the firewall section that will be used to create firewall
-    # sections below this mark section
-    #top_firewall_section_marker = <None>
 
-    # Resource ID of the firewall section that will be used to create firewall
-    # sections above this mark section
-    #bottom_firewall_section_marker = <None>
 
 
 
