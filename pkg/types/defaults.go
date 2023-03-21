@@ -31,7 +31,10 @@ var WCPOptions = map[string][]string{
 	"k8s": {
 		"enable_vnet_crd", "enable_lb_monitor_crd", "enable_nsxnetworkconfig_crd", "enable_routeset_crd",
 		"enable_ip_pool_crd", "enable_vm_crd", "lb_statistic_monitor_interval", "enable_lb_vs_statistics_monitor",
-		"ip_usage_alarm_threshold", "node_type",
+		"network_info_resync_period", "ip_usage_alarm_threshold",
+	},
+	"coe": {
+		"node_type",
 	},
 	"vc": {"vc_endpoint", "sso_domain", "https_port"},
 }
