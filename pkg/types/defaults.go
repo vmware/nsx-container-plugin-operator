@@ -9,10 +9,26 @@ const (
 )
 
 var (
-	NcpSections      = []string{"DEFAULT", "ha", "k8s", "coe", "nsx_v3", "vc"}
-	AgentSections    = []string{"DEFAULT", "k8s", "coe", "nsx_node_agent", "nsx_kube_proxy"}
-	OperatorSections = []string{"DEFAULT", "ha", "k8s", "coe", "nsx_v3", "vc", "nsx_node_agent", "nsx_kube_proxy"}
-	BootstrapOptions = []string{"DEFAULT", "nsx_node_agent"}
+	NcpSections         = []string{"DEFAULT", "ha", "k8s", "coe", "nsx_v3", "vc"}
+	AgentSections       = []string{"DEFAULT", "nsx_node_agent", "nsx_kube_proxy"}
+	OperatorSections    = []string{"DEFAULT", "ha", "k8s", "coe", "nsx_v3", "vc", "nsx_node_agent", "nsx_kube_proxy"}
+	BootstrapOptionKeys = map[string][]string{
+		"DEFAULT": {
+			"log_dir", "log_file", "log_rotation_file_max_mb", "log_rotation_backup_count",
+		},
+		"nsx_node_agent": {
+			"enable_ipv6", "use_nsx_ovs_kernel_module", "ovs_db_sock", "ovs_bridge", "ovs_uplink_port", "mtu",
+		},
+		"coe": {
+			"node_type",
+		},
+	}
+	AgentOptionKeys = map[string][]string{
+		"k8s": {
+			"apiserver_host_ip", "apiserver_host_port", "client_token_file", "ca_file", "enable_hostport_snat", "connect_retry_timeout",
+		},
+		"coe": {"connect_retry_timeout"},
+	}
 )
 
 var TASSection = string("cf")
