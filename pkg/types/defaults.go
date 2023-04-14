@@ -10,9 +10,26 @@ const (
 
 var (
 	NcpSections      = []string{"DEFAULT", "ha", "k8s", "coe", "nsx_v3", "vc"}
-	AgentSections    = []string{"DEFAULT", "k8s", "coe", "nsx_node_agent", "nsx_kube_proxy"}
 	OperatorSections = []string{"DEFAULT", "ha", "k8s", "coe", "nsx_v3", "vc", "nsx_node_agent", "nsx_kube_proxy"}
-	BootstrapOptions = []string{"DEFAULT", "nsx_node_agent"}
+	// AgentSections are responsible for rendering nsx-node-agent configmap, while not all keys updates in section `coe` and
+	// `k8s` require restart of nsx-node-agent. So AgentRestartSections are responsible for checking whether nsx-node-agent
+	// should be restarted when related keys are updated.
+	AgentSections              = []string{"DEFAULT", "k8s", "coe", "nsx_node_agent", "nsx_kube_proxy"}
+	AgentRestartSections       = []string{"DEFAULT", "nsx_node_agent", "nsx_kube_proxy"}
+	BootstrapRestartOptionKeys = map[string][]string{
+		"DEFAULT": {
+			"log_dir", "log_file", "log_rotation_file_max_mb", "log_rotation_backup_count",
+		},
+		"nsx_node_agent": {
+			"enable_ipv6", "use_nsx_ovs_kernel_module", "ovs_uplink_port", "mtu",
+		},
+	}
+	AgentRestartOptionKeys = map[string][]string{
+		"k8s": {
+			"apiserver_host_ip", "apiserver_host_port", "client_token_file", "ca_file", "enable_hostport_snat",
+		},
+		"coe": {"connect_retry_timeout"},
+	}
 )
 
 var TASSection = string("cf")
