@@ -16,10 +16,10 @@ var AddToManagerFuncs []func(manager.Manager, *statusmanager.StatusManager, *sha
 // AddToManager adds all Controllers to the Manager
 func AddToManager(m manager.Manager, operatorNamespace string) error {
 	sharedInfo, err := sharedinfo.New(m, operatorNamespace)
-	s := statusmanager.New(m.GetClient(), m.GetRESTMapper(), "nsx-ncp", operatorversion.Version, operatorNamespace, sharedInfo)
 	if err != nil {
 		return err
 	}
+	s := statusmanager.New(m.GetClient(), m.GetRESTMapper(), "nsx-ncp", operatorversion.Version, operatorNamespace, sharedInfo)
 	for _, f := range AddToManagerFuncs {
 		if err := f(m, s, sharedInfo); err != nil {
 			return err
