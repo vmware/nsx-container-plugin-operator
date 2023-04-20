@@ -70,6 +70,10 @@ func (adaptor *ConfigMapK8s) FillDefaults(configmap *corev1.ConfigMap, spec *con
 		log.Error(err, "failed to load ConfigMap")
 		return err
 	}
+
+	if cfg.Section("coe").HasKey("adaptor") && cfg.Section("coe").Key("adaptor").Value() != "kubernetes" {
+		log.Info("The operator infers the adaptor to use from the environment. Any setting for coe.adaptor will be ignored")
+	}
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "coe", "adaptor", "kubernetes", true))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "policy_nsxapi", "True", true))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "coe", "enable_snat", "True", false))
@@ -94,6 +98,9 @@ func (adaptor *ConfigMapOc) FillDefaults(configmap *corev1.ConfigMap, spec *conf
 		return err
 	}
 	// We support only policy API, single tier topo on openshift4
+	if cfg.Section("coe").HasKey("adaptor") && cfg.Section("coe").Key("adaptor").Value() != "openshift4" {
+		log.Info("The operator infers the adaptor to use from the environment. Any setting for coe.adaptor will be ignored")
+	}
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "coe", "adaptor", "openshift4", true))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "policy_nsxapi", "True", true))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "single_tier_topology", "True", true))
