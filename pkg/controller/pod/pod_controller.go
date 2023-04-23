@@ -294,7 +294,8 @@ func (r *ReconcilePod) createK8sObject(obj *unstructured.Unstructured) error {
 }
 
 func (r *ReconcilePod) recreateNodeAgentPodsIfInvalidResolvConf(
-	resName string) error {
+	resName string,
+) error {
 	podsInCLB, err := identifyPodsInCLBDueToInvalidResolvConf(r.client)
 	if err != nil {
 		log.Error(err, "Could not identify if any pod is in CLB because "+
@@ -311,13 +312,15 @@ func (r *ReconcilePod) recreateNodeAgentPodsIfInvalidResolvConf(
 }
 
 func identifyPodsInCLBDueToInvalidResolvConf(c client.Client) (
-	[]corev1.Pod, error) {
+	[]corev1.Pod, error,
+) {
 	var podsInCLB []corev1.Pod
 	podList := &corev1.PodList{}
 	nodeAgentLabelSelector := labels.SelectorFromSet(
 		map[string]string{"component": operatortypes.NsxNodeAgentDsName})
 	err := c.List(context.TODO(), podList, &client.ListOptions{
-		LabelSelector: nodeAgentLabelSelector})
+		LabelSelector: nodeAgentLabelSelector,
+	})
 	if err != nil {
 		log.Error(err, "Error while getting the post list for node-agent")
 		return nil, err
@@ -334,8 +337,8 @@ func identifyPodsInCLBDueToInvalidResolvConf(c client.Client) (
 				nodeAgentLogs, "Failed to establish a new connection: "+
 					"[Errno -2] Name or service not known") {
 				log.Info(fmt.Sprintf(
-					"Pod %v is in CLB because of invalid resolv.conf. "+
-						"It shall be restarted", pod.Name))
+					"Pod %v in node %v is in CLB because of invalid resolv.conf. "+
+						"It shall be restarted", pod.Name, pod.Spec.NodeName))
 				podsInCLB = append(podsInCLB, pod)
 			}
 		}
@@ -356,7 +359,8 @@ func isNodeAgentContainerInCLB(pod *corev1.Pod) bool {
 }
 
 var getContainerLogsInPod = func(pod *corev1.Pod, containerName string) (
-	string, error) {
+	string, error,
+) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		log.Error(err, "Failed to invoke rest.InClusterConfig")
@@ -371,7 +375,8 @@ var getContainerLogsInPod = func(pod *corev1.Pod, containerName string) (
 	podLogOptions := &corev1.PodLogOptions{
 		Container: operatortypes.NsxNodeAgentContainerName,
 		Previous:  true,
-		TailLines: &logLinesRetrieved}
+		TailLines: &logLinesRetrieved,
+	}
 	podLogs, err := clientSet.CoreV1().Pods(pod.Namespace).GetLogs(
 		pod.Name, podLogOptions).Stream()
 	if err != nil {
