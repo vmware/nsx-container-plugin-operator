@@ -562,7 +562,8 @@ func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap)
 	diffSecs := []string{}
 	currSecs := currCfg.SectionStrings()
 	for _, name := range currSecs {
-		if !hasSection(prevCfg, name) {
+		_, err = prevCfg.GetSection(name)
+		if err != nil {
 			if len(currCfg.Section(name).KeyStrings()) != 0 {
 				log.Info(fmt.Sprintf("Section [%s] is added into configmap", name))
 				diffSecs = append(diffSecs, name)
@@ -612,7 +613,8 @@ func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap)
 	}
 	prevSecs := prevCfg.SectionStrings()
 	for _, name := range prevSecs {
-		if !hasSection(currCfg, name) {
+		_, err = currCfg.GetSection(name)
+		if err != nil {
 			if len(prevCfg.Section(name).KeyStrings()) != 0 {
 				log.Info(fmt.Sprintf("Section [%s] is removed from configmap", name))
 				diffSecs = append(diffSecs, name)
@@ -628,10 +630,7 @@ func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap)
 		if !needChange.agent && inSlice(sec, operatortypes.AgentSections) {
 			needChange.agent = true
 		}
-		if !needChange.agent && checkOptionsChange(operatortypes.AgentOptionKeys, sec, prevCfg, currCfg) {
-			needChange.agent = true
-		}
-		if !needChange.bootstrap && checkOptionsChange(operatortypes.BootstrapOptionKeys, sec, prevCfg, currCfg) {
+		if !needChange.bootstrap && inSlice(sec, operatortypes.BootstrapOptions) {
 			needChange.bootstrap = true
 		}
 		if needChange.ncp && needChange.agent && needChange.bootstrap {
@@ -644,26 +643,6 @@ func NeedApplyChange(currConfig *corev1.ConfigMap, prevConfig *corev1.ConfigMap)
 	}
 
 	return needChange, nil
-}
-
-func checkOptionsChange(options map[string][]string, sec string, prevCfg, currCfg *ini.File) bool {
-	if _, ok := options[sec]; !ok {
-		return false
-	}
-	if hasSection(prevCfg, sec) != hasSection(currCfg, sec) {
-		return true
-	}
-	// We can assert that section `sec` exists in both prevCfg and currCfg here.
-	for _, key := range options[sec] {
-		if prevCfg.Section(sec).HasKey(key) != currCfg.Section(sec).HasKey(key) {
-			return true
-		}
-		if prevCfg.Section(sec).HasKey(key) && currCfg.Section(sec).HasKey(key) &&
-			prevCfg.Section(sec).Key(key).Value() != currCfg.Section(sec).Key(key).Value() {
-			return true
-		}
-	}
-	return false
 }
 
 func immutableFieldChanged(cur, prev *ini.File) bool {
@@ -750,11 +729,6 @@ func GenerateOperatorConfigMap(opConfigmap *corev1.ConfigMap, ncpConfigMap *core
 		return err
 	}
 	return nil
-}
-
-func hasSection(cfg *ini.File, section string) bool {
-	_, err := cfg.GetSection(section)
-	return err == nil
 }
 
 func iniWriteToString(cfg *ini.File) (string, error) {
