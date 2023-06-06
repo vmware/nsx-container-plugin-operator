@@ -623,6 +623,24 @@ data:
     #natfirewallmatch = MATCH_INTERNAL_ADDRESS
 
 
+
+
+    # If true, NSX Groups created for network policies will be created with
+    # mixed expressions i.e. using both Segment and Segment Port tags. The
+    # drawback of using mixed expression groups is that they do not scale well.
+    # NSX may take a lot of time to evaluate the group conditions which will
+    # cause processing delays of network traffic. The limitation of not using
+    # mixed expression groups is that the namespace selectors in mixed
+    # selectors of network policies can only select upto 4 namespaces. If the
+    # option is toggled, all existing groups of network policies that are using
+    # mixed selectors will resync to use/abandon mixed expressions upon NCP
+    # restart depending upon the value of this option. Requires policy_nsxapi
+    # set to True to take effect
+    enable_mixed_expression_groups = True
+
+
+
+
     [vc]
 
 
