@@ -157,7 +157,8 @@ data:
 
 
     # Set this to True to enable NCP to create LoadBalancer on a Tier-1 for
-    # LoadBalancer CRD. This option does not support LB autoscaling.
+    # LoadBalancer CRD. l4_lb_auto_scaling value will have no effect on
+    # LoadBalancer resources created via LoadBalancer CRD
     #enable_lb_crd = False
 
 
@@ -206,18 +207,13 @@ data:
     # subnets for no-snat namespace. It only works for policy mode.
     #enable_namespace_subnets = False
 
-    # If true, NCP will collect prometheus metrics and export the metrics
-    # through the prometheus_metrics_port.On VMC metric monitoring will always
-    # be enabled regardless of this option.
-    #enable_prometheus_metrics = False
 
-    # The port number for NCP to expose prometheus metrics.
-    #prometheus_metrics_port = 8001
 
 
 
 
     [nsx_kube_proxy]
+
 
 
 
@@ -243,14 +239,6 @@ data:
     # The OVS uplink OpenFlow port where to apply the NAT rules to.
     #ovs_uplink_port = <None>
 
-    # Set this to True if you want to install and use the NSX-OVS kernel
-    # module. If the host OS is supported, it will be installed by nsx-ncp-
-    # bootstrap and used by nsx-ovs container in nsx-node-agent pod. Note that
-    # you would have to add (uncomment) the volumes and mounts in the nsx-ncp-
-    # bootstrap DS and add SYS_MODULE capability in nsx-ovs container spec in
-    # nsx-node-agent DS. Failing to do so will result in failure of
-    # installation and/or kernel upgrade of NSX-OVS kernelmodule.
-    #use_nsx_ovs_kernel_module = False
 
     # The time in seconds for nsx_node_agent to call OVS command. Please
     # increase the time if OVS is in heavy load to create/delete ports
@@ -364,6 +352,12 @@ data:
     # will create additional LB when necessary upon K8s Service of type LB
     # creation/update.
     #l4_lb_auto_scaling = True
+
+    # Option to enable local cache for layer 4 load balancer autoscaling. Only
+    # supported on NSX Policy API. When enabled, NCP will use cached LBS usage
+    # to decide Service LB placement and need for scaling out new LBS. Disable
+    # if cluster LBS is shared with non-NCP workloads.
+    #l4_lb_auto_scaling_local_cache = True
 
 
 
@@ -592,12 +586,26 @@ data:
     # is set to cookie. It has no effect if l7_persistence is not set.
     #cookie_name = <None>
 
+    # If true, this will enable sync realization while creating ip-pool/ip-
+    # subnets for policy mode. It is only available after nsxt 4.1.1
+    #sync_realization = True
+
 
     # This parameter indicate how firewall is applied to a traffic packet.
     # Firewall can be bypassed, or be applied to external/internal address of
-    # NAT rule
+    # NAT rule.Ignored if policy_nsxapi is False
     # Choices: MATCH_EXTERNAL_ADDRESS MATCH_INTERNAL_ADDRESS BYPASS
     #natfirewallmatch = MATCH_INTERNAL_ADDRESS
+
+    # Boolean; set to True to leverage NSX groups with mixed expressions, False
+    # to keep them disabled. Defaults to False. With mixed expressions enabled,
+    # NCP will create NSX DFW rules for K8S network policies with
+    # multiselectors such that all pods in an arbitrary number of namespaces
+    # are subjected to DFW; without this feature enabled, the NSX rules for
+    # network policies with multiselectors can select pods in at most 5
+    # namespaces. This should be disabled if significant delays in NSX
+    # effective group membership evaluation are observed
+    #enable_mixed_expression_groups = False
 
 
     [vc]

@@ -764,6 +764,7 @@ spec:
                   - nsx-networking
               topologyKey: "kubernetes.io/hostname"
 
+      priorityClassName: system-cluster-critical
       containers:
         - name: nsx-ncp
           # Docker image for NCP
@@ -1010,6 +1011,7 @@ spec:
           - mountPath: /var/log/nsx-ujo
             name: host-var-log-ujo
 
+      priorityClassName: system-node-critical
       containers:
         - name: nsx-host-ovs-monitor
 
@@ -1156,6 +1158,7 @@ spec:
       # If configured with ServiceAccount, update the ServiceAccount
       # name below.
       serviceAccountName: nsx-node-agent-svc-account
+      priorityClassName: system-node-critical
       containers:
         - name: nsx-node-agent
           # Docker image for NCP
