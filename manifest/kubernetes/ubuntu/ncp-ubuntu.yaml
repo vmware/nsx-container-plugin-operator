@@ -764,7 +764,6 @@ spec:
                   - nsx-networking
               topologyKey: "kubernetes.io/hostname"
 
-      priorityClassName: system-cluster-critical
       containers:
         - name: nsx-ncp
           # Docker image for NCP
@@ -794,9 +793,9 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - check_pod_liveness nsx-ncp 5
+                - check_pod_liveness nsx-ncp 30
             initialDelaySeconds: 5
-            timeoutSeconds: 5
+            timeoutSeconds: 30
             periodSeconds: 10
             failureThreshold: 5
           volumeMounts:
