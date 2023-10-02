@@ -780,9 +780,6 @@ spec:
             mountPath: /usr/sbin/modinfo
             readOnly: true
 
-          # This lib mountpoint is for "modinfo" to work in CoreOS
-          - name: host-libcrypto
-            mountPath: /usr/lib64/libcrypto.so.1.1
           # Mount multus config dir for copying primary CNI config
           - mountPath: /host/var/run/multus
             name: host-multus
@@ -884,10 +881,6 @@ spec:
           hostPath:
             path: /usr/sbin/modinfo
 
-        # This lib mountpoint is for "modinfo" to work in CoreOS
-        - name: host-libcrypto
-          hostPath:
-            path: /usr/lib64/libcrypto.so.1.1
         - name: host-multus
           hostPath:
             path: /var/run/multus
