@@ -443,157 +443,6 @@ subjects:
 
 
 
-
----
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
-metadata:
-  name: nsx-node-agent-psp
-spec:
-  hostIPC: false
-  hostNetwork: true
-  hostPID: true
-  privileged: true
-  allowedCapabilities:
-  - SYS_ADMIN
-  - NET_ADMIN
-  - SYS_PTRACE
-  - DAC_READ_SEARCH
-  - SYS_NICE
-  - SYS_MODULE
-  - AUDIT_WRITE
-  - NET_RAW
-  defaultAddCapabilities: null
-  fsGroup:
-   rule: RunAsAny
-  readOnlyRootFilesystem: false
-  requiredDropCapabilities:
-  - KILL
-  runAsUser:
-    rule: RunAsAny
-  seLinux:
-    rule: RunAsAny
-    seLinuxOptions:
-      type: spc_t
-      level: s0:c0.c1023
-  supplementalGroups:
-    rule: RunAsAny
-  volumes:
-  - configMap
-  - downwardAPI
-  - emptyDir
-  - persistentVolumeClaim
-  - projected
-  - secret
-  - hostPath
-
----
-
-kind: ClusterRole
-# Set the apiVersion to rbac.authorization.k8s.io/v1beta1 when k8s < v1.8
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: nsx-node-agent-psp-cluster-role
-rules:
-- apiGroups:
-  - policy
-  resourceNames:
-  - nsx-node-agent-psp
-  resources:
-  - podsecuritypolicies
-  verbs:
-  - use
-
----
-
-kind: ClusterRoleBinding
-# Set the apiVersion to rbac.authorization.k8s.io/v1beta1 when k8s < v1.8
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: nsx-node-agent-psp-cluster-role-binding
-subjects:
-- kind: ServiceAccount
-  name: nsx-node-agent-svc-account
-  namespace: nsx-system
-roleRef:
-  kind: ClusterRole
-  name: nsx-node-agent-psp-cluster-role
-  apiGroup: rbac.authorization.k8s.io
-
----
-
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
-metadata:
-  name: ncp-psp
-spec:
-  hostNetwork: true
-  hostIPC: false
-  hostPID: false
-  privileged: false
-  allowedCapabilities:
-  - AUDIT_WRITE
-  defaultAddCapabilities: null
-  requiredDropCapabilities:
-  - KILL
-  runAsUser:
-    rule: RunAsAny
-  volumes:
-  - configMap
-  - downwardAPI
-  - emptyDir
-  - persistentVolumeClaim
-  - projected
-  - secret
-  seLinux:
-    rule: RunAsAny
-  supplementalGroups:
-    rule: MustRunAs
-    ranges:
-      # Forbid adding the root group.
-      - min: 1
-        max: 65535
-  fsGroup:
-    rule: MustRunAs
-    ranges:
-      # Forbid adding the root group.
-      - min: 1
-        max: 65535
-  readOnlyRootFilesystem: false
-
----
-
-kind: ClusterRole
-# Set the apiVersion to rbac.authorization.k8s.io/v1beta1 when k8s < v1.8
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: ncp-psp-cluster-role
-rules:
-- apiGroups:
-  - policy
-  resourceNames:
-  - ncp-psp
-  resources:
-  - podsecuritypolicies
-  verbs:
-  - use
-
----
-
-kind: ClusterRoleBinding
-# Set the apiVersion to rbac.authorization.k8s.io/v1beta1 when k8s < v1.8
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: ncp-psp-cluster-role-binding
-subjects:
-- kind: ServiceAccount
-  name: ncp-svc-account
-  namespace: nsx-system
-roleRef:
-  kind: ClusterRole
-  name: ncp-psp-cluster-role
-  apiGroup: rbac.authorization.k8s.io
-
 ---
 # Create Role for NCP to run exec on pods
 kind: Role
@@ -676,6 +525,9 @@ data:
 # must be specified.
 # This yaml file is part of NCP  release.
 
+
+
+
 # ConfigMap for ncp.ini
 apiVersion: v1
 kind: ConfigMap
@@ -692,6 +544,7 @@ data:
 
 
 ---
+
 
 apiVersion: apps/v1
 kind: Deployment
@@ -808,7 +661,9 @@ spec:
 
 
 
+
       volumes:
+
 
 
         - name: host-var-log-ujo
