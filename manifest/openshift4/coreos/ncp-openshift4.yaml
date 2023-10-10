@@ -384,7 +384,6 @@ subjects:
 
 
 
-
 ---
 # Create Role for NCP to run exec on pods
 kind: Role
@@ -463,6 +462,9 @@ data:
 # must be specified.
 # This yaml file is part of NCP  release.
 
+
+
+
 # ConfigMap for ncp.ini
 apiVersion: v1
 kind: ConfigMap
@@ -479,6 +481,7 @@ data:
 
 
 ---
+
 
 apiVersion: apps/v1
 kind: Deployment
@@ -590,7 +593,9 @@ spec:
 
 
 
+
       volumes:
+
 
 
         - name: host-var-log-ujo
