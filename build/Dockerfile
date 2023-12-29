@@ -1,8 +1,8 @@
-FROM golang:1.19.10 as golang-build
+FROM golang:1.21.5 as golang-build
 FROM registry.access.redhat.com/ubi8/ubi:latest
 
 LABEL name="nsx-container-plugin-operator"
-LABEL maintainer="NSX Containers Team <nsx-container-dev@vmware.com>"
+LABEL maintainer="NSX Containers Team <container-dev.pdl@broadcom.com>"
 LABEL summary="A cluster operator to deploy nsx-ncp CNI plugin"
 LABEL version="0.0.3"
 LABEL release="1"
