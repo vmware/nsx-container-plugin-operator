@@ -9,11 +9,12 @@ jobs:
   build:
     runs-on: [ubuntu-latest]
     steps:
-    - name: Set up Go 1.19
-      uses: actions/setup-go@v1
+    - name: Set up Go 1.21
+      uses: actions/setup-go@v4
       with:
-        go-version: 1.19
-    - uses: actions/checkout@v2
+        go-version: 1.21.5
+        cache: false
+    - uses: actions/checkout@v4
     - name: Build Operator image and push to registry
       env:
         DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}

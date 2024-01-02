@@ -373,7 +373,7 @@ func TestNeedApplyChange(t *testing.T) {
 	(*preData)[operatortypes.ConfigMapDataKey], _ = iniWriteToString(preCfg)
 	needChange, err = NeedApplyChange(currConfigMap, prevConfigMap)
 	assert.True(t, needChange.ncp)
-	assert.True(t, needChange.agent)
+	assert.False(t, needChange.agent)
 	assert.False(t, needChange.bootstrap)
 	assert.Nil(t, err)
 

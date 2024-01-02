@@ -1,6 +1,6 @@
 module github.com/vmware/nsx-container-plugin-operator
 
-go 1.19
+go 1.21.5
 
 require (
 	github.com/ghodss/yaml v1.0.0
