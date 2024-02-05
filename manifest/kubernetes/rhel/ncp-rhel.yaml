@@ -356,6 +356,7 @@ rules:
      - loadbalancers/status
      - nsxlbmonitors
      - nsxlbmonitors/status
+     - ncpsettings
    
    verbs:
      - create
@@ -440,6 +441,8 @@ subjects:
  - kind: ServiceAccount
    name: ncp-svc-account
    namespace: nsx-system
+
+
 
 
 
