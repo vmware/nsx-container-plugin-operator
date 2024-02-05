@@ -212,6 +212,16 @@ data:
 
 
 
+    # Set this to True to enable NCP Setting CRD. The CRD can be used to
+    # override some NCP Settings at runtime. Existing NSX resources will not be
+    # automatically updated when the CRD is created, except for L7 persistence
+    # profile and application profile. The corresponding k8s objects need to be
+    # modified or recreated to take effect. Settings that can be overridden
+    # include log_firewall_traffic, log_dropped_traffic, pool_algorithm,
+    # cookie_name, l7_persistence, l7_persistence_timeout, x_forwarded_for,
+    # snat_rule_logging, vs_access_log, ip_reallocation_time.
+    #enable_ncp_setting_crd = False
+
 
     [nsx_kube_proxy]
 
@@ -337,9 +347,9 @@ data:
 
     # Indicates whether distributed firewall rules are logged. Option 'ALL'
     # will enable logging for all DFW rules (both DENY and ALLOW), and option
-    # 'DENY' will enable logging only for DENY rules. Remove this config if no
-    # logging is desired. When IPv6 is enabled this setting will not apply to
-    # rules for allowing ND traffic.
+    # 'DENY' will enable logging only for DENY rules. Remove this config or set
+    # it to 'None' will turn off logging. When IPv6 is enabled this setting
+    # will not apply to rules for allowing ND traffic.
     # Choices: ALL DENY None NONE none
     #log_firewall_traffic = <None>
 
@@ -588,7 +598,10 @@ data:
     #cookie_name = <None>
 
     # If true, this will enable sync realization while creating ip-pool/ip-
-    # subnets for policy mode. It is only available after nsxt 4.1.1
+    # subnets for policy mode. It is only available after nsxt 4.1.1. If the
+    # value on the subnet conflicts with the existing subnets in the same ip-
+    # pool, it will use the original value to be consistent with the existing
+    # subnets.
     #sync_realization = True
 
 
@@ -607,6 +620,7 @@ data:
     # namespaces. This should be disabled if significant delays in NSX
     # effective group membership evaluation are observed
     #enable_mixed_expression_groups = False
+
 
 
     [vc]
