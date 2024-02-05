@@ -384,6 +384,8 @@ subjects:
 
 
 
+
+
 ---
 # Create Role for NCP to run exec on pods
 kind: Role
@@ -788,6 +790,8 @@ spec:
           # Mount multus config dir for copying primary CNI config
           - mountPath: /host/var/run/multus
             name: host-multus
+          - mountPath: /host/proc/sys/net
+            name: host-proc-sys-net
 
 
 
@@ -889,6 +893,9 @@ spec:
         - name: host-multus
           hostPath:
             path: /var/run/multus
+        - name: host-proc-sys-net
+          hostPath:
+            path: /proc/sys/net
 
 
 
