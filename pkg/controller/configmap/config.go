@@ -110,8 +110,9 @@ func (adaptor *ConfigMapOc) FillDefaults(configmap *corev1.ConfigMap, spec *conf
 	// For Openshift add a 3-seconds agent delay by default
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_node_agent", "waiting_before_cni_response", "3", false))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_node_agent", "mtu", strconv.Itoa(operatortypes.DefaultMTU), false))
-	// For Openshift force enable_ovs_mcast_snooping as True by default for IPI and UPI installation
-	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_node_agent", "enable_ovs_mcast_snooping", "true", false))
+	// For Openshift force enable_ovs_mcast_snooping as False by default for IPI and UPI installation
+        // keepalived is configured with unicast by default from OC 4.11
+	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_node_agent", "enable_ovs_mcast_snooping", "false", false))
 	appendErrorIfNotNil(&errs, fillClusterNetwork(spec, cfg))
 
 	// Write config back to ConfigMap data
