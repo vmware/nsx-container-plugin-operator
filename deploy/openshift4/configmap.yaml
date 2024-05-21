@@ -606,16 +606,14 @@ data:
     #natfirewallmatch = MATCH_INTERNAL_ADDRESS
 
     # Deprecated; Boolean; set to True to leverage NSX groups with mixed
-    # expressions, False to keep them disabled. Applicable only if NSX
-    # version is less than 4.2.0. Defaults to False. Enforced to True
-    # if NSX version is 4.2.0 or higher. With mixed expressions enabled,
-    # NCP will create NSX DFW rules for K8S network policies with
-    # multiselectors such that all pods in an arbitrary number of
-    # namespaces are subjected to DFW; without this feature
-    # enabled, the NSX rules for network policies with multiselectors
-    # can select pods in at most 5 namespaces. This should be disabled
-    # if significant delays in NSX effective group membership evaluation
-    # are observed
+    # expressions, False to keep them disabled. Applicable only if NCP
+    # version is less than 4.2.0. Defaults to False. Enforced to True if
+    # both NCP version is 4.2.0 or higher and NSX version is 4.1.2 or
+    # higher. With mixed expressions enabled, NCP will create NSX DFW rules
+    # for K8S network policies with multiselectors such that all pods in
+    # an arbitrary number of namespaces are subjected to DFW; without
+    # this feature enabled, the NSX rules for network policies with
+    # multiselectors can select pods in at most 5 namespaces
     #enable_mixed_expression_groups = False
 
 
