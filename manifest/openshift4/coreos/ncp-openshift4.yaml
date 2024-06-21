@@ -458,6 +458,7 @@ data:
 
 
 
+
 ---
 # Yaml template for NCP Deployment
 # Proper kubernetes API and NSX API parameters, and NCP Docker image
@@ -1042,7 +1043,7 @@ spec:
                 - /bin/sh
                 - -c
                 - check_pod_liveness nsx-kube-proxy 5
-            initialDelaySeconds: 10
+            initialDelaySeconds: 60
             timeoutSeconds: 5
             periodSeconds: 10
             failureThreshold: 5
