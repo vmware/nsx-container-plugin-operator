@@ -303,6 +303,7 @@ data:
     #retries = 10
 
 
+
     # Specify one or a list of thumbprint strings to use in verifying the NSX
     # Manager server certificate. This option is ignored if "insecure" is set
     # to True or "ca_file" is defined.
@@ -611,16 +612,6 @@ data:
     # Choices: MATCH_EXTERNAL_ADDRESS MATCH_INTERNAL_ADDRESS BYPASS
     #natfirewallmatch = MATCH_INTERNAL_ADDRESS
 
-    # Deprecated; Boolean; set to True to leverage NSX groups with mixed
-    # expressions, False to keep them disabled. Applicable only if NCP
-    # version is less than 4.2.0. Defaults to False. Enforced to True if
-    # both NCP version is 4.2.0 or higher and NSX version is 4.1.2 or
-    # higher. With mixed expressions enabled, NCP will create NSX DFW rules
-    # for K8S network policies with multiselectors such that all pods in
-    # an arbitrary number of namespaces are subjected to DFW; without
-    # this feature enabled, the NSX rules for network policies with
-    # multiselectors can select pods in at most 5 namespaces
-    #enable_mixed_expression_groups = False
 
 
 
