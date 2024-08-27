@@ -334,6 +334,8 @@ spec:
     name: Salvatore Orlando
   - email: jsui@vmware.com
     name: Jianwei Sui
+  - email: fausery@vmware.com
+    name: Yves Fauser
   maturity: alpha
   provider:
     name: VMware
