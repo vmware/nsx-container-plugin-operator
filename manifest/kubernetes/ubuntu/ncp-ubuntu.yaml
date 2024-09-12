@@ -336,6 +336,7 @@ rules:
      - delete
 
      - update
+
  - apiGroups:
    - ""
    - extensions
@@ -1004,7 +1005,7 @@ spec:
     spec:
       hostNetwork: true
       # Give enough time to save flows and perform stop_ovs
-      terminationGracePeriodSeconds: 60
+      terminationGracePeriodSeconds: 360
 
 
       # tolerations is configured by operator ncp-install CRD
@@ -1170,9 +1171,10 @@ spec:
                 # host before the installation. This allows livenessProbe to
                 # succeed and container won't restart frequently.
                 - check_pod_liveness nsx-ovs 10
-            initialDelaySeconds: 180
+            initialDelaySeconds: 240
             periodSeconds: 10
             timeoutSeconds: 10
+            failureThreshold: 5
           volumeMounts:
           # ncp.ini
           - name: projected-volume
