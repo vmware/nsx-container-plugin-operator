@@ -24,12 +24,9 @@ import (
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	"github.com/vmware/vsphere-automation-sdk-go/runtime/core"
-	"github.com/vmware/vsphere-automation-sdk-go/runtime/data"
 	vspherelog "github.com/vmware/vsphere-automation-sdk-go/runtime/log"
 	policyclient "github.com/vmware/vsphere-automation-sdk-go/runtime/protocol/client"
 	"github.com/vmware/vsphere-automation-sdk-go/runtime/security"
-	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/model"
-	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/search"
 	"gopkg.in/ini.v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -206,15 +203,15 @@ func filterPortsByNodeAddresses(nsxClients *NsxClients, ports *[]nsxtmgr.Logical
 		if err != nil {
 			return filteredPorts, err
 		}
-		if len(logicalPort.RealizedBindings) == 0 {
+		if len(logicalPort.DiscoveredBindings) == 0 {
 			continue
 		}
 		var collectedAddresses []string
-		for _, realizedBinding := range logicalPort.RealizedBindings {
-			address := realizedBinding.Binding.IpAddress
+		for _, discoveredBinding := range logicalPort.DiscoveredBindings {
+			address := discoveredBinding.Binding.IpAddress
 			if inSlice(address, nodeAddresses) && !inSlice(address, collectedAddresses) {
 				log.Info(fmt.Sprintf("Node address %s matches port %s", address, port.Id))
-				// The addresses in logicalPort.RealizedBindings may be duplicate so we use collectedAddresses to ensure the uniqueness in filteredPorts.
+				// The addresses in logicalPort.DiscoveredBindings may be duplicate so we use collectedAddresses to ensure the uniqueness in filteredPorts.
 				collectedAddresses = append(collectedAddresses, address)
 				filteredPorts = append(filteredPorts, &port)
 			}
@@ -228,69 +225,6 @@ func filterPortsByNodeAddresses(nsxClients *NsxClients, ports *[]nsxtmgr.Logical
 		err = errors.Errorf("error while search logical port for addresses %v, expecting 1, got %d", nodeAddresses, lspCount)
 	}
 	return filteredPorts, err
-}
-
-func searchNodePortByVcNameAddress(nsxClients *NsxClients, nodeName string, nodeAddress string) (*model.SegmentPort, error) {
-	log.Info(fmt.Sprintf("Searching segment port for node %s", nodeName))
-	connector := nsxClients.PolicyConnector
-	searchClient := search.NewDefaultQueryClient(connector)
-	// The format of node segment port display_name:
-	//   <vmx file's parent directory name>/<node vSphere name>.vmx@<tn-id>
-	// The vmx file's parent directory name can include VM name or a uid string for a vSAN VM
-	searchString := fmt.Sprintf("resource_type:SegmentPort AND display_name:*\\/%s.vmx*", nodeName)
-	ports, err := searchClient.List(searchString, nil, nil, nil, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	if len(ports.Results) == 0 {
-		return nil, errors.Errorf("segment port for node %s not found", nodeName)
-	}
-	portIndex := 0
-	portIndex, err = filterSegmentPorts(nsxClients, ports.Results, nodeName, nodeAddress)
-	if err != nil {
-		return nil, errors.Errorf("found %d segment ports for node %s, but none with address %s: %s", len(ports.Results), nodeName, nodeAddress, err)
-	}
-	portId, err := ports.Results[portIndex].Field("id")
-	if err != nil {
-		return nil, err
-	}
-	portPath, err := ports.Results[portIndex].Field("parent_path")
-	if err != nil {
-		return nil, err
-	}
-	portIdValue := (portId).(*data.StringValue).Value()
-	portPathValue := (portPath).(*data.StringValue).Value()
-	segmentPort := model.SegmentPort{
-		Id:   &portIdValue,
-		Path: &portPathValue,
-	}
-	return &segmentPort, nil
-}
-
-func filterSegmentPorts(nsxClients *NsxClients, ports []*data.StructValue, nodeName string, nodeAddress string) (int, error) {
-	log.Info(fmt.Sprintf("Found %d segment ports for node %s, checking addresses", len(ports), nodeName))
-	for idx, port := range ports {
-		portPolicyId, err := port.Field("id")
-		if err != nil {
-			return -1, err
-		}
-		portPolicyIdValue := (portPolicyId).(*data.StringValue).Value()
-		// there's an assumption that the policy ID has format "default:<manager_id>"
-		portMgrId := string([]byte(portPolicyIdValue)[8:])
-		nsxClient := nsxClients.ManagerClient
-		logicalPort, _, err := nsxClient.LogicalSwitchingApi.GetLogicalPortState(nsxClient.Context, portMgrId)
-		if err != nil {
-			return -1, err
-		}
-		if len(logicalPort.RealizedBindings) == 0 {
-			continue
-		}
-		address := logicalPort.RealizedBindings[0].Binding.IpAddress
-		if address == nodeAddress {
-			return idx, nil
-		}
-	}
-	return -1, errors.Errorf("no port matches")
 }
 
 func getConnectorTLSConfig(insecure bool, clientCertFile string, clientKeyFile string, caFile string) (*tls.Config, error) {
