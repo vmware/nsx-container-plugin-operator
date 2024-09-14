@@ -237,7 +237,7 @@ data:
 
     # The log level of NSX RPC library. Ignored if debug is True
     # Choices: NOTSET DEBUG INFO WARNING ERROR CRITICAL
-    #nsxrpc_loglevel = ERROR
+    #nsxrpc_loglevel = INFO
 
 
 
@@ -602,7 +602,9 @@ data:
 
     # This parameter indicate how firewall is applied to a traffic packet.
     # Firewall can be bypassed, or be applied to external/internal address of
-    # NAT rule.Ignored if policy_nsxapi is False
+    # NAT rule. This property only affects new SNAT rules. Existing SNAT rules
+    # willcontinue to use the same firewall_match property with which they were
+    # created.Ignored if policy_nsxapi is False
     # Choices: MATCH_EXTERNAL_ADDRESS MATCH_INTERNAL_ADDRESS BYPASS
     #natfirewallmatch = MATCH_INTERNAL_ADDRESS
 
