@@ -17,17 +17,16 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	nsxt "github.com/vmware/go-vmware-nsxt"
-	"github.com/vmware/go-vmware-nsxt/common"
-	nsxtmgr "github.com/vmware/go-vmware-nsxt/manager"
 
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	"github.com/vmware/vsphere-automation-sdk-go/runtime/core"
-	"github.com/vmware/vsphere-automation-sdk-go/runtime/data"
 	vspherelog "github.com/vmware/vsphere-automation-sdk-go/runtime/log"
 	policyclient "github.com/vmware/vsphere-automation-sdk-go/runtime/protocol/client"
 	"github.com/vmware/vsphere-automation-sdk-go/runtime/security"
+	segSDK "github.com/vmware/vsphere-automation-sdk-go/services/nsxt/infra/segments"
+	segPortSDK "github.com/vmware/vsphere-automation-sdk-go/services/nsxt/infra/segments/ports"
 	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/model"
 	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/search"
 	"gopkg.in/ini.v1"
@@ -137,7 +136,7 @@ func getNodeExternalIdByProviderId(nsxClients *NsxClients, nodeName string, prov
 		if vms.Cursor == "" {
 			break
 		} else {
-			log.Info(fmt.Sprintf("Continuing to query with cursor %s", vms.Cursor))
+			log.Info(fmt.Sprintf("continuing to query with cursor %s", vms.Cursor))
 			localVarOptionals["cursor"] = vms.Cursor
 		}
 	}
@@ -167,19 +166,23 @@ func listAttachmentsByNodeExternalId(nsxClients *NsxClients, vmExternalId string
 	return attachment_ids, nil
 }
 
-func listPortsByAttachmentIds(nsxClients *NsxClients, attachmentIds sets.String) (*[]nsxtmgr.LogicalPort, error) {
-	var portList []nsxtmgr.LogicalPort
-	localVarOptionals := make(map[string]interface{})
+func listPortsByAttachmentIds(nsxClients *NsxClients, attachmentIds sets.String) (*[]model.SegmentPort, error) {
+	var portList []model.SegmentPort
+	connector := nsxClients.PolicyConnector
+	searchClient := search.NewQueryClient(connector)
 	for attachmentId := range attachmentIds {
-		localVarOptionals["attachmentId"] = attachmentId
-		nsxClient := nsxClients.ManagerClient
-		log.Info(fmt.Sprintf("Searching logical port for vif attachment %s", attachmentId))
-		lsps, _, err := nsxClient.LogicalSwitchingApi.ListLogicalPorts(nsxClient.Context, localVarOptionals)
+		log.Info(fmt.Sprintf("searching segment port for vif attachment %s", attachmentId))
+		searchString := fmt.Sprintf("resource_type:SegmentPort AND attachment.id:%s", attachmentId)
+		searchOp, err := searchClient.List(searchString, nil, nil, nil, nil, nil)
 		if err != nil {
 			return nil, err
 		}
-		for _, lsp := range lsps.Results {
-			portList = append(portList, lsp)
+		for _, obj := range searchOp.Results {
+			segPort, err := operatortypes.CastToBindingType[model.SegmentPort](obj, model.SegmentPortBindingType())
+			if err != nil {
+				return nil, err
+			}
+			portList = append(portList, segPort)
 		}
 	}
 	if len(portList) == 0 {
@@ -197,28 +200,41 @@ func inSlice(str string, s []string) bool {
 	return false
 }
 
-func filterPortsByNodeAddresses(nsxClients *NsxClients, ports *[]nsxtmgr.LogicalPort, nodeAddresses []string) ([]*nsxtmgr.LogicalPort, error) {
-	var filteredPorts []*nsxtmgr.LogicalPort
-	log.Info(fmt.Sprintf("Found %d ports for node, checking addresses %v", len(*ports), nodeAddresses))
-	nsxClient := nsxClients.ManagerClient
+func filterPortsByNodeAddresses(nsxClients *NsxClients, ports *[]model.SegmentPort, nodeAddresses []string) ([]*model.SegmentPort, error) {
+	var filteredPorts []*model.SegmentPort
+	var erroneousPorts []string
+	log.Info(fmt.Sprintf("found %d ports for node, checking addresses %v", len(*ports), nodeAddresses))
+	connector := nsxClients.PolicyConnector
+	segPortStateClient := segPortSDK.NewStateClient(connector)
 	for _, port := range *ports {
-		logicalPort, _, err := nsxClient.LogicalSwitchingApi.GetLogicalPortState(nsxClient.Context, port.Id)
+		segId, err := operatortypes.ExtractSegmentIdFromPath(*port.ParentPath)
 		if err != nil {
-			return filteredPorts, err
+			log.Error(err, fmt.Sprintf("Unable to infer Segment ID of Segment Port %s", *port.Id))
+			erroneousPorts = append(erroneousPorts, *port.Id)
+			continue
 		}
-		if len(logicalPort.RealizedBindings) == 0 {
+		portState, err := segPortStateClient.Get(segId, *port.Id, nil, nil)
+		if err != nil {
+			log.Error(err, fmt.Sprintf("Unable to infer State of Segment Port %s", *port.Id))
+			erroneousPorts = append(erroneousPorts, *port.Id)
+			continue
+		}
+		if len(portState.RealizedBindings) == 0 {
 			continue
 		}
 		var collectedAddresses []string
-		for _, realizedBinding := range logicalPort.RealizedBindings {
-			address := realizedBinding.Binding.IpAddress
+		for _, realizedBinding := range portState.RealizedBindings {
+			address := *realizedBinding.Binding.IpAddress
 			if inSlice(address, nodeAddresses) && !inSlice(address, collectedAddresses) {
-				log.Info(fmt.Sprintf("Node address %s matches port %s", address, port.Id))
+				log.Info(fmt.Sprintf("node address %s matches segment port %s", address, *port.Id))
 				// The addresses in logicalPort.RealizedBindings may be duplicate so we use collectedAddresses to ensure the uniqueness in filteredPorts.
 				collectedAddresses = append(collectedAddresses, address)
 				filteredPorts = append(filteredPorts, &port)
 			}
 		}
+	}
+	if len(erroneousPorts) > 0 {
+		return filteredPorts, errors.Errorf("Encountered issues while reading node Segment Ports %v", erroneousPorts)
 	}
 	var err error
 	lspCount := len(filteredPorts)
@@ -228,69 +244,6 @@ func filterPortsByNodeAddresses(nsxClients *NsxClients, ports *[]nsxtmgr.Logical
 		err = errors.Errorf("error while search logical port for addresses %v, expecting 1, got %d", nodeAddresses, lspCount)
 	}
 	return filteredPorts, err
-}
-
-func searchNodePortByVcNameAddress(nsxClients *NsxClients, nodeName string, nodeAddress string) (*model.SegmentPort, error) {
-	log.Info(fmt.Sprintf("Searching segment port for node %s", nodeName))
-	connector := nsxClients.PolicyConnector
-	searchClient := search.NewDefaultQueryClient(connector)
-	// The format of node segment port display_name:
-	//   <vmx file's parent directory name>/<node vSphere name>.vmx@<tn-id>
-	// The vmx file's parent directory name can include VM name or a uid string for a vSAN VM
-	searchString := fmt.Sprintf("resource_type:SegmentPort AND display_name:*\\/%s.vmx*", nodeName)
-	ports, err := searchClient.List(searchString, nil, nil, nil, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	if len(ports.Results) == 0 {
-		return nil, errors.Errorf("segment port for node %s not found", nodeName)
-	}
-	portIndex := 0
-	portIndex, err = filterSegmentPorts(nsxClients, ports.Results, nodeName, nodeAddress)
-	if err != nil {
-		return nil, errors.Errorf("found %d segment ports for node %s, but none with address %s: %s", len(ports.Results), nodeName, nodeAddress, err)
-	}
-	portId, err := ports.Results[portIndex].Field("id")
-	if err != nil {
-		return nil, err
-	}
-	portPath, err := ports.Results[portIndex].Field("parent_path")
-	if err != nil {
-		return nil, err
-	}
-	portIdValue := (portId).(*data.StringValue).Value()
-	portPathValue := (portPath).(*data.StringValue).Value()
-	segmentPort := model.SegmentPort{
-		Id:   &portIdValue,
-		Path: &portPathValue,
-	}
-	return &segmentPort, nil
-}
-
-func filterSegmentPorts(nsxClients *NsxClients, ports []*data.StructValue, nodeName string, nodeAddress string) (int, error) {
-	log.Info(fmt.Sprintf("Found %d segment ports for node %s, checking addresses", len(ports), nodeName))
-	for idx, port := range ports {
-		portPolicyId, err := port.Field("id")
-		if err != nil {
-			return -1, err
-		}
-		portPolicyIdValue := (portPolicyId).(*data.StringValue).Value()
-		// there's an assumption that the policy ID has format "default:<manager_id>"
-		portMgrId := string([]byte(portPolicyIdValue)[8:])
-		nsxClient := nsxClients.ManagerClient
-		logicalPort, _, err := nsxClient.LogicalSwitchingApi.GetLogicalPortState(nsxClient.Context, portMgrId)
-		if err != nil {
-			return -1, err
-		}
-		if len(logicalPort.RealizedBindings) == 0 {
-			continue
-		}
-		address := logicalPort.RealizedBindings[0].Binding.IpAddress
-		if address == nodeAddress {
-			return idx, nil
-		}
-	}
-	return -1, errors.Errorf("no port matches")
 }
 
 func getConnectorTLSConfig(insecure bool, clientCertFile string, clientKeyFile string, caFile string) (*tls.Config, error) {
@@ -342,7 +295,7 @@ func writeToFile(certPath string, certData []byte, keyPath string, keyData []byt
 func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 	configMap := r.sharedInfo.OperatorConfigMap
 	if configMap == nil {
-		log.Info("Getting config from operator configmap")
+		log.Info("getting config from operator configmap")
 		watchedNamespace := r.status.OperatorNamespace
 		if watchedNamespace == "" {
 			log.Info(fmt.Sprintf("no namespace supplied for loading configMap, defaulting to: %s", operatortypes.OperatorNamespace))
@@ -386,7 +339,7 @@ func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 		nsxSecret = &corev1.Secret{}
 		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: watchedNamespace, Name: operatortypes.NsxSecret}, nsxSecret)
 		if err != nil {
-			log.Info("Failed to get operator nsx-secret")
+			log.Info("failed to get operator nsx-secret")
 		}
 	}
 	if nsxSecret != nil {
@@ -407,7 +360,7 @@ func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 		if err != nil {
 			return nil, err
 		}
-		log.Info("Using cert and private key to connect to NSX")
+		log.Info("using cert and private key to connect to NSX")
 	} else {
 		if len(user) == 0 {
 			return nil, errors.Errorf("no credentials for NSX authentication supplied")
@@ -417,7 +370,7 @@ func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 			securityCtx.SetProperty(security.USER_KEY, user)
 			securityCtx.SetProperty(security.PASSWORD_KEY, password)
 			nsxClients.PolicySecurityContext = securityCtx
-			log.Info("Using username and password to connect to NSX")
+			log.Info("using username and password to connect to NSX")
 		}
 	}
 
@@ -470,10 +423,10 @@ func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
 func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	if r.sharedInfo.AddNodeTag == false {
-		reqLogger.Info("Tagging node logical switch ports was deactivated")
+		reqLogger.Info("tagging node logical switch ports was deactivated")
 		return reconcile.Result{}, nil
 	}
-	reqLogger.Info("Reconciling Node")
+	reqLogger.Info("reconciling Node")
 
 	// When cachedNodeSet is empty, it's possible that the node controller just starts. The reconciler should know the whole node set to invoke status.setNotDegraded so we list the nodes
 	if len(cachedNodeSet) == 0 {
@@ -496,7 +449,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			reqLogger.Info("Node not found and remove it from cache")
+			reqLogger.Info("node not found and remove it from cache")
 			delete(cachedNodeSet, nodeName)
 			r.status.SetFromNodes(cachedNodeSet)
 			return reconcile.Result{}, nil
@@ -511,7 +464,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 
 	nodeAddressesWithType := instance.Status.Addresses
 	var nodeAddresses []string
-	reqLogger.Info("Got the node addresses info", "nodeAddresses", nodeAddressesWithType)
+	reqLogger.Info("got the node addresses info", "nodeAddresses", nodeAddressesWithType)
 	for _, address := range nodeAddressesWithType {
 		if address.Type != corev1.NodeHostName && !inSlice(address.Address, nodeAddresses) {
 			nodeAddresses = append(nodeAddresses, address.Address)
@@ -519,7 +472,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	}
 	if cachedNodeSet[nodeName] != nil && reflect.DeepEqual(cachedNodeSet[nodeName].Addresses, nodeAddresses) && cachedNodeSet[nodeName].Success {
 		// TODO: consider the corner case that node port is changed but the address is not changed
-		reqLogger.Info("Skip reconcile: node was processed")
+		reqLogger.Info("skip reconcile: node was processed")
 		return reconcile.Result{}, nil
 	}
 
@@ -541,7 +494,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Addresses: nodeAddresses,
 			Success:   false,
-			Reason:    fmt.Sprintf("Error while achieving external id for node %s: %v", nodeName, err),
+			Reason:    fmt.Sprintf("Unable to get NSX External ID for node %s: %v", nodeName, err),
 		}
 		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
@@ -561,17 +514,17 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Addresses: nodeAddresses,
 			Success:   false,
-			Reason:    fmt.Sprintf("Error while achieving ports for node %s: %v", nodeName, err),
+			Reason:    fmt.Sprintf("Unable to get any Segment Port for node %s: %v", nodeName, err),
 		}
 		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
 	}
-	lsps, err := filterPortsByNodeAddresses(nsxClients, portList, nodeAddresses)
+	segPorts, err := filterPortsByNodeAddresses(nsxClients, portList, nodeAddresses)
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Addresses: nodeAddresses,
 			Success:   false,
-			Reason:    fmt.Sprintf("Error while achieving port with specific address for node %s: %v", nodeName, err),
+			Reason:    fmt.Sprintf("Unable to get Segment Port matching IP address of node %s: %v", nodeName, err),
 		}
 		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
@@ -579,42 +532,52 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	nodeNameScope := "ncp/node_name"
 	clusterScope := "ncp/cluster"
 	anyUpdate := false
-	for _, lsp := range lsps {
+	for _, segPort := range segPorts {
 		foundNodeTag := false
 		foundClusterTag := false
-		for _, tag := range lsp.Tags {
-			if tag.Scope == nodeNameScope && tag.Tag == request.Name {
+		for _, tag := range segPort.Tags {
+			if *tag.Scope == nodeNameScope && *tag.Tag == request.Name {
 				foundNodeTag = true
-			} else if tag.Scope == clusterScope && tag.Tag == cluster {
+			} else if *tag.Scope == clusterScope && *tag.Tag == cluster {
 				foundClusterTag = true
 			}
 		}
 		if foundNodeTag == true && foundClusterTag == true {
-			reqLogger.Info("Node port had been tagged", "port.Id", lsp.Id)
+			reqLogger.Info("node port had been tagged", "port.Id", segPort.Id)
 			continue
 		}
-		reqLogger.Info("Updating node tag for port", "port.Id", lsp.Id)
+		reqLogger.Info("updating node tag for port", "port.Id", segPort.Id)
 		if foundNodeTag == false {
-			var nodeTag = common.Tag{Scope: nodeNameScope, Tag: request.Name}
-			lsp.Tags = append(lsp.Tags, nodeTag)
+			var nodeTag = model.Tag{Scope: &nodeNameScope, Tag: &request.Name}
+			segPort.Tags = append(segPort.Tags, nodeTag)
 		}
 		if foundClusterTag == false {
-			var clusterTag = common.Tag{Scope: clusterScope, Tag: cluster}
-			lsp.Tags = append(lsp.Tags, clusterTag)
+			var clusterTag = model.Tag{Scope: &clusterScope, Tag: &cluster}
+			segPort.Tags = append(segPort.Tags, clusterTag)
 		}
-		nsxClient := nsxClients.ManagerClient
-		_, _, err = nsxClient.LogicalSwitchingApi.UpdateLogicalPort(nsxClient.Context, lsp.Id, *lsp)
+		connector := nsxClients.PolicyConnector
+		segPortStateClient := segSDK.NewPortsClient(connector)
+		segId, err := operatortypes.ExtractSegmentIdFromPath(*segPort.ParentPath)
+		if err != nil {
+			cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
+				Addresses: nodeAddresses,
+				Success:   false,
+				Reason:    fmt.Sprintf("Failed to find Segment ID for node %s: %v", nodeName, err),
+			}
+			r.status.SetFromNodes(cachedNodeSet)
+			return reconcile.Result{}, err
+		}
+		_, err = segPortStateClient.Update(segId, *segPort.Id, *segPort)
 		anyUpdate = true
 		if err != nil {
 			cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 				Addresses: nodeAddresses,
 				Success:   false,
-				Reason:    fmt.Sprintf("Failed to update port %s for node %s: %v", lsp.Id, nodeName, err),
+				Reason:    fmt.Sprintf("Failed to update Segment Port %s for node %s: %v", segPort.Id, nodeName, err),
 			}
 			r.status.SetFromNodes(cachedNodeSet)
 			return reconcile.Result{}, err
 		}
-
 	}
 	cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 		Addresses: nodeAddresses,
@@ -623,9 +586,9 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 	}
 	r.status.SetFromNodes(cachedNodeSet)
 	if !anyUpdate {
-		reqLogger.Info("All node ports already had been tagged")
+		reqLogger.Info("all node ports had already been tagged")
 	} else {
-		reqLogger.Info("Successfully updated tags on ports", "ports", lsps)
+		reqLogger.Info("successfully updated tags on ports", "ports", segPorts)
 	}
 	return reconcile.Result{}, nil
 }

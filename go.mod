@@ -14,8 +14,8 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.4.0
 	github.com/vmware/go-vmware-nsxt v0.0.0-20201207175959-23201aae9cc3
-	github.com/vmware/vsphere-automation-sdk-go/runtime v0.2.0
-	github.com/vmware/vsphere-automation-sdk-go/services/nsxt v0.3.0
+	github.com/vmware/vsphere-automation-sdk-go/runtime v0.7.0
+	github.com/vmware/vsphere-automation-sdk-go/services/nsxt v0.12.0
 	gopkg.in/ini.v1 v1.51.0
 	k8s.io/api v0.18.2
 	k8s.io/apimachinery v0.18.3
@@ -45,11 +45,12 @@ require (
 	github.com/go-logr/logr v0.1.0 // indirect
 	github.com/go-logr/zapr v0.1.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang-jwt/jwt/v4 v4.3.0 // indirect
 	github.com/golang/groupcache v0.0.0-20191027212112-611e8accdfc9 // indirect
 	github.com/golang/protobuf v1.5.0 // indirect
 	github.com/google/go-cmp v0.5.5 // indirect
 	github.com/google/gofuzz v1.1.0 // indirect
-	github.com/google/uuid v1.1.1 // indirect
+	github.com/google/uuid v1.2.0 // indirect
 	github.com/googleapis/gnostic v0.3.1 // indirect
 	github.com/gophercloud/gophercloud v0.6.0 // indirect
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
@@ -66,7 +67,7 @@ require (
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.26.0 // indirect
 	github.com/prometheus/procfs v0.6.0 // indirect
-	github.com/vmware/vsphere-automation-sdk-go/lib v0.2.0 // indirect
+	github.com/vmware/vsphere-automation-sdk-go/lib v0.7.0 // indirect
 	go.uber.org/atomic v1.6.0 // indirect
 	go.uber.org/multierr v1.5.0 // indirect
 	go.uber.org/zap v1.14.1 // indirect
