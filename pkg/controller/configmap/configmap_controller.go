@@ -237,9 +237,8 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 	ncpReplicas := ncpInstallCrd.Spec.NcpReplicas
 	if ncpReplicas == 0 {
-		log.Info(fmt.Sprintf("Set NcpReplicas to %d as it is not set in ncp-install CRD",
-			operatortypes.NcpDefaultReplicas))
-		ncpReplicas = int32(operatortypes.NcpDefaultReplicas)
+		// still log the event for troubleshooting purposes
+		log.Info("NcpReplicas was set to 0 and NCP won't be operational!")
 	}
 
 	addNodeTag := ncpInstallCrd.Spec.AddNodeTag
