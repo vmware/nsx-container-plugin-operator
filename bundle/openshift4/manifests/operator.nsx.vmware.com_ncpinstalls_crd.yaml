@@ -41,7 +41,7 @@ spec:
                 description: the replica numbers of nsx-ncp deployment
                 type: integer
                 format: int32
-                minimum: 1
+                minimum: 0 
               addNodeTag:
                 description: 'Tag node logical switch port with node name and cluster when set to true, skip tagging when set to false.
                   Note that if one node has multiple attached VirtualNetworkInterfaces, this function is not supported and should be set to false.'

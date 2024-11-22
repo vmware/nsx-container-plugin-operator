@@ -111,7 +111,7 @@ func (adaptor *ConfigMapOc) FillDefaults(configmap *corev1.ConfigMap, spec *conf
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_node_agent", "waiting_before_cni_response", "3", false))
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_node_agent", "mtu", strconv.Itoa(operatortypes.DefaultMTU), false))
 	// For Openshift force enable_ovs_mcast_snooping as False by default for IPI and UPI installation
-        // keepalived is configured with unicast by default from OC 4.11
+	// keepalived is configured with unicast by default from OC 4.11
 	appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_node_agent", "enable_ovs_mcast_snooping", "false", false))
 	appendErrorIfNotNil(&errs, fillClusterNetwork(spec, cfg))
 
@@ -417,7 +417,7 @@ func Render(configmap *corev1.ConfigMap, ncpReplicas *int32, ncpNodeSelector *ma
 		}
 	}
 
-	if !haEnabled && *ncpReplicas != 1 {
+	if !haEnabled && *ncpReplicas > 1 {
 		log.Info(fmt.Sprintf("Set nsx-ncp deployment replicas to 1 instead of %d as HA is deactivated",
 			*ncpReplicas))
 		*ncpReplicas = 1
