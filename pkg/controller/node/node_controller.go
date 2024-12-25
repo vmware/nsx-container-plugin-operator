@@ -519,15 +519,25 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 		r.status.SetFromNodes(cachedNodeSet)
 		return reconcile.Result{}, err
 	}
-	segPorts, err := filterPortsByNodeAddresses(nsxClients, portList, nodeAddresses)
-	if err != nil {
-		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
-			Addresses: nodeAddresses,
-			Success:   false,
-			Reason:    fmt.Sprintf("Unable to get Segment Port matching IP address of node %s: %v", nodeName, err),
+	// If we are here there is at least 1 port
+	var segPorts []*model.SegmentPort
+	if len(*portList) > 1 {
+		segPorts, err = filterPortsByNodeAddresses(nsxClients, portList, nodeAddresses)
+		if err != nil {
+			cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
+				Addresses: nodeAddresses,
+				Success:   false,
+				Reason:    fmt.Sprintf("Unable to get Segment Port matching IP address of node %s: %v", nodeName, err),
+			}
+			r.status.SetFromNodes(cachedNodeSet)
+			return reconcile.Result{}, err
 		}
-		r.status.SetFromNodes(cachedNodeSet)
-		return reconcile.Result{}, err
+	} else {
+		log.Info(fmt.Sprintf("node: %s: skipping filtering port by IP address as there is a single port (%s)", nodeName, *(*portList)[0].Path))
+		// portList is *[]model.SegmentPort, segPorts is []*model.SegmentPort
+		for _, port := range *portList {
+			segPorts = append(segPorts, &port)
+		}
 	}
 	nodeNameScope := "ncp/node_name"
 	clusterScope := "ncp/cluster"
@@ -573,7 +583,7 @@ func (r *ReconcileNode) Reconcile(request reconcile.Request) (reconcile.Result, 
 			cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 				Addresses: nodeAddresses,
 				Success:   false,
-				Reason:    fmt.Sprintf("Failed to update Segment Port %s for node %s: %v", segPort.Id, nodeName, err),
+				Reason:    fmt.Sprintf("Failed to update Segment Port %v for node %s: %v", segPort.Id, nodeName, err),
 			}
 			r.status.SetFromNodes(cachedNodeSet)
 			return reconcile.Result{}, err
