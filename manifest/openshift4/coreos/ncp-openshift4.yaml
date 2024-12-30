@@ -224,6 +224,16 @@ rules:
 
 
 
+
+ - apiGroups:
+   - operator.openshift.io
+   resources:
+   - ingresscontrollers
+   verbs:
+   - list
+
+
+
 ---
 
 # Create ClusterRole for NCP to edit resources
