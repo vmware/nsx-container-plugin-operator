@@ -312,8 +312,11 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	opNsxSecret := &corev1.Secret{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: watchedNamespace, Name: operatortypes.NsxSecret}, opNsxSecret)
 	if err != nil {
-		log.Error(err, "Failed to get operator nsx-secret")
-		return reconcile.Result{}, err
+		if !apierrors.IsNotFound(err) {
+			log.Error(err, "Failed to get operator nsx-secret")
+			return reconcile.Result{}, err
+		}
+		opNsxSecret = nil
 	}
 	if opNsxSecret != nil {
 		err = FillNsxAuthCfg(instance, opNsxSecret)
@@ -327,8 +330,11 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	opLbSecret := &corev1.Secret{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: watchedNamespace, Name: operatortypes.LbSecret}, opLbSecret)
 	if err != nil {
-		log.Error(err, "Failed to get operator lb-secret")
-		return reconcile.Result{}, err
+		if !apierrors.IsNotFound(err) {
+			log.Error(err, "Failed to get operator lb-secret")
+			return reconcile.Result{}, err
+		}
+		opLbSecret = nil
 	}
 	if opLbSecret != nil {
 		err = FillLbCertCfg(instance, opLbSecret)
