@@ -318,6 +318,14 @@ data:
     # operation from NSX manager.
     #http_read_timeout = 180
 
+    # Priority level for top-level sections within the Distributed Firewall
+    # policy. Defaults to 10.
+    #top_section_priority = 10
+
+    # Priority level for baseline sections within the Distributed Firewall
+    # policy. Defaults to 99.
+    #baseline_section_priority = 99
+
     # Maximum number of times to retry a HTTP connection.
     #http_retries = 3
 
@@ -553,12 +561,12 @@ data:
     # Maximum number of pool member allowed for each small load balancer
     # service. Requires ncp_enforced_pool_member_limit set to ACTIVATE to take
     # effect. The value should be in range [1, 7500].
-    #members_per_small_lbs = 2000
+    #members_per_small_lbs = 4000
 
     # Maximum number of pool member allowed for each medium load balancer
     # service. Requires ncp_enforced_pool_member_limit set to ACTIVATE  to take
     # effect. The value should be in range [1, 7500].
-    #members_per_medium_lbs = 2000
+    #members_per_medium_lbs = 4000
 
 
 
