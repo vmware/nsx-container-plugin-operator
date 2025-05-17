@@ -755,10 +755,6 @@ spec:
           # mount host's OS info to identify host OS
           - name: host-os-release
             mountPath: /host/etc/os-release
-          # mount ovs runtime files to stop running OVS kmod
-          - name: host-var-run
-            mountPath: /var/run/openvswitch
-            subPath: openvswitch
 
 
 {{if .UseNsxOvsKmod}}
@@ -803,6 +799,8 @@ spec:
             name: host-multus
           - mountPath: /host/proc/sys/net
             name: host-proc-sys-net
+          - name: host-dbus-socket
+            mountPath: /host/run/dbus/system_bus_socket
 
 
 
@@ -832,9 +830,8 @@ spec:
           # mount host's OS info to identify host OS
           - name: host-os-release
             mountPath: /host/etc/os-release
-          # mount ovs runtime files to stop running OVS kmod
-          - name: host-var-run
-            mountPath: /host/var/run
+          - name: host-dbus-socket
+            mountPath: /host/run/dbus/system_bus_socket
 
           - mountPath: /var/log/nsx-ujo
             name: host-var-log-ujo
@@ -860,9 +857,6 @@ spec:
         - name: host-os-release
           hostPath:
             path: /etc/os-release
-        - name: host-var-run
-          hostPath:
-            path: /var/run
 
 
 
@@ -907,6 +901,10 @@ spec:
         - name: host-proc-sys-net
           hostPath:
             path: /proc/sys/net
+        - name: host-dbus-socket
+          hostPath:
+            path: /run/dbus/system_bus_socket
+            type: Socket
 
 
 
