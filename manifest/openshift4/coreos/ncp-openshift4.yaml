@@ -356,6 +356,7 @@ rules:
 
 # NCP needs permission to use psp to patch pods when enabling psp
 
+
 ---
 
 # Bind ServiceAccount created for NCP to its ClusterRole
@@ -611,6 +612,7 @@ spec:
 
 
 
+
         - name: host-var-log-ujo
           hostPath:
             path: /var/log/nsx-ujo
@@ -753,8 +755,10 @@ spec:
 
           # mounts to which NSX-CNI are copied END
           # mount host's OS info to identify host OS
+
           - name: host-os-release
-            mountPath: /host/etc/os-release
+            mountPath: /host/usr/lib/os-release
+
 
 
 {{if .UseNsxOvsKmod}}
@@ -795,7 +799,7 @@ spec:
             readOnly: true
 
           # Mount multus config dir for copying primary CNI config
-          - mountPath: /host/var/run/multus
+          - mountPath: /host/run/multus
             name: host-multus
           - mountPath: /host/proc/sys/net
             name: host-proc-sys-net
@@ -830,8 +834,10 @@ spec:
           # mount host's OS info to identify host OS
           - name: host-os-release
             mountPath: /host/etc/os-release
+
           - name: host-dbus-socket
             mountPath: /host/run/dbus/system_bus_socket
+
 
           - mountPath: /var/log/nsx-ujo
             name: host-var-log-ujo
