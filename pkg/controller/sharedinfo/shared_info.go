@@ -45,7 +45,9 @@ func getAdaptorName() (string, error) {
 		log.Error(err, fmt.Sprintf("Failed to load os-release from %s.", operatortypes.OsReleaseFile))
 		return "", err
 	}
-	if cfg.Section("").Key("ID").String() == "rhcos" {
+	// For OpenShift <= 4.18, the ID value is "rhcos"; for OpenShift 4.19, the ID value is "rhel".
+	// For OpenShift 4.18 and 4.19, the key OPENSHIFT_VERSION exists. Didn't check the other versions.
+	if cfg.Section("").Key("ID").String() == "rhcos" || cfg.Section("").HasKey("OPENSHIFT_VERSION") {
 		return "openshift4", nil
 	}
 	return "kubernetes", nil
