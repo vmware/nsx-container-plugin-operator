@@ -17,7 +17,7 @@ import (
 	"github.com/vmware/nsx-container-plugin-operator/pkg/apis"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
-	"github.com/vmware/nsx-container-plugin-operator/version"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/version"
 
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	"github.com/operator-framework/operator-sdk/pkg/leader"

@@ -6,7 +6,7 @@ package controller
 import (
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
-	operatorversion "github.com/vmware/nsx-container-plugin-operator/version"
+	operatorversion "github.com/vmware/nsx-container-plugin-operator/pkg/version"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 

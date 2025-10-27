@@ -19,7 +19,7 @@ import (
 	operatorv1 "github.com/vmware/nsx-container-plugin-operator/pkg/apis/operator/v1"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
-	"github.com/vmware/nsx-container-plugin-operator/version"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/version"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"

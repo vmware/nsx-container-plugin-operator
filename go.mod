@@ -1,6 +1,6 @@
 module github.com/vmware/nsx-container-plugin-operator
 
-go 1.23.1
+go 1.25.3
 
 require (
 	github.com/ghodss/yaml v1.0.0
@@ -95,6 +95,7 @@ replace (
 	github.com/Azure/go-autorest => github.com/Azure/go-autorest v13.3.2+incompatible // Required by OLM
 	github.com/Masterminds/goutils => github.com/Masterminds/goutils v1.1.1
 	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
+	github.com/mikefarah/yaml/v2 => gopkg.in/yaml.v2 v2.4.0 // Fix module path mismatch
 	github.com/openshift/api => github.com/openshift/api v0.0.0-20200413201024-c6e8c9b6eb9a // Required by network CRD API
 	k8s.io/apimachinery => k8s.io/apimachinery v0.17.1 // Replaced by MCO/CRI-O
 	k8s.io/client-go => k8s.io/client-go v0.17.4 // Required by prometheus-operator
