@@ -1,4 +1,4 @@
-FROM golang:1.21.5 as golang-build
+FROM golang:1.25.3 as golang-build
 FROM registry.access.redhat.com/ubi8/ubi:latest
 
 LABEL name="nsx-container-plugin-operator"
