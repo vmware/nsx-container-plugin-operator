@@ -25,12 +25,6 @@ require (
 )
 
 require (
-	cloud.google.com/go v0.49.0 // indirect
-	github.com/Azure/go-autorest/autorest v0.9.3-0.20191028180845-3492b2aff503 // indirect
-	github.com/Azure/go-autorest/autorest/adal v0.8.1-0.20191028180845-3492b2aff503 // indirect
-	github.com/Azure/go-autorest/autorest/date v0.2.0 // indirect
-	github.com/Azure/go-autorest/logger v0.1.0 // indirect
-	github.com/Azure/go-autorest/tracing v0.5.0 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Masterminds/sprig v2.22.0+incompatible // indirect
@@ -39,7 +33,6 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/evanphx/json-patch v4.9.0+incompatible // indirect
 	github.com/gibson042/canonicaljson-go v1.0.3 // indirect
 	github.com/go-logr/logr v0.1.0 // indirect
@@ -52,7 +45,6 @@ require (
 	github.com/google/gofuzz v1.1.0 // indirect
 	github.com/google/uuid v1.2.0 // indirect
 	github.com/googleapis/gnostic v0.3.1 // indirect
-	github.com/gophercloud/gophercloud v0.6.0 // indirect
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	github.com/huandu/xstrings v1.2.0 // indirect
 	github.com/json-iterator/go v1.1.11 // indirect
