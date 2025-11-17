@@ -1218,6 +1218,10 @@ spec:
           # This allows making network changes using nmcli
           - name: dbus
             mountPath: /var/run/dbus
+          - name: host-nmcli
+            mountPath: /usr/bin/nmcli
+          - name: host-libnm
+            mountPath: /usr/lib64/libnm.so.0
           # To read ovs_uplink_port's ifcfg
           - name: nscripts
             mountPath: /host/etc/sysconfig/network-scripts
@@ -1287,6 +1291,12 @@ spec:
         - name: nscripts
           hostPath:
             path: /etc/sysconfig/network-scripts
+        - name: host-nmcli
+          hostPath:
+            path: /bin/nmcli
+        - name: host-libnm
+          hostPath:
+            path: /usr/lib64/libnm.so.0
 
 
 
