@@ -17,7 +17,9 @@ ENV OPERATOR=/usr/local/bin/nsx-ncp-operator \
 
 COPY build/bin /usr/local/bin
 COPY manifest /manifest
-RUN  /usr/local/bin/user_setup
+RUN  rpm -e --nodeps curl-minimal || true && \
+     rpm -e --nodeps libcurl-minimal || true  && \
+     /usr/local/bin/user_setup
 
 ENTRYPOINT ["/usr/local/bin/entrypoint"]
 
