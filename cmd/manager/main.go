@@ -11,9 +11,6 @@ import (
 	"runtime"
 	"strings"
 
-	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
-	_ "k8s.io/client-go/plugin/pkg/client/auth"
-
 	"github.com/vmware/nsx-container-plugin-operator/pkg/apis"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
