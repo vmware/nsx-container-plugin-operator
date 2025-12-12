@@ -388,12 +388,11 @@ func _test_no_labels(c k8sclient.Client, t *testing.T) {
 	podsInCLB, err := identifyPodsInCLBDueToInvalidResolvConf(c)
 
 	if err != nil {
-		t.Fatalf(fmt.Sprintf("Failed to identify Pods in CLB when there "+
-			"is none. Got error: %v", err))
+		msg := fmt.Sprintf("Failed to identify Pods in CLB when there is none. Got error: %v", err)
+		t.Fatalf("%s", msg)
 	}
 	if len(podsInCLB) > 0 {
-		t.Fatalf("Incorrect identification of pods in CLB. Identified " +
-			"pods in CLB when there should be None.")
+		t.Fatalf("Incorrect identification of pods in CLB. Identified pods in CLB when there should be None.")
 	}
 }
 
@@ -422,12 +421,11 @@ func _test_normal_running(c k8sclient.Client, t *testing.T) {
 	c.Update(context.TODO(), nodeAgentPod)
 	podsInCLB, err := identifyPodsInCLBDueToInvalidResolvConf(c)
 	if err != nil {
-		t.Fatalf(fmt.Sprintf("Failed to identify Pods in CLB when there "+
-			"is none. Got error: %v", err))
+		msg := fmt.Sprintf("Failed to identify Pods in CLB when there is none. Got error: %v", err)
+		t.Fatalf("%s", msg)
 	}
 	if len(podsInCLB) > 0 {
-		t.Fatalf("Incorrect identification of pods in CLB. Identified " +
-			"pods in CLB when there should be None.")
+		t.Fatalf("Incorrect identification of pods in CLB. Identified pods in CLB when there should be None.")
 	}
 }
 
@@ -464,12 +462,11 @@ func _test_clb_but_not_invalid_resolv(c k8sclient.Client, t *testing.T) {
 	}
 	podsInCLB, err := identifyPodsInCLBDueToInvalidResolvConf(c)
 	if err != nil {
-		t.Fatalf(fmt.Sprintf("Failed to identify Pods in CLB when there "+
-			"is none. Got error: %v", err))
+		msg := fmt.Sprintf("Failed to identify Pods in CLB when there is none. Got error: %v", err)
+		t.Fatalf("%s", msg)
 	}
 	if len(podsInCLB) > 0 {
-		t.Fatalf("Incorrect identification of pods in CLB. Identified " +
-			"pods in CLB when there should be None.")
+		t.Fatalf("Incorrect identification of pods in CLB. Identified pods in CLB when there should be None.")
 	}
 }
 
@@ -507,12 +504,11 @@ func _test_clb_due_to_invalid_resolv(c k8sclient.Client, t *testing.T) {
 	}
 	podsInCLB, err := identifyPodsInCLBDueToInvalidResolvConf(c)
 	if err != nil {
-		t.Fatalf(fmt.Sprintf("Failed to identify Pods in CLB when there "+
-			"is none. Got error: %v", err))
+		msg := fmt.Sprintf("Failed to identify Pods in CLB when there is none. Got error: %v", err)
+		t.Fatalf("%s", msg)
 	}
 	if len(podsInCLB) == 0 {
-		t.Fatalf("Incorrect identification of pods in CLB. No pods " +
-			"identified in CLB when expected.")
+		t.Fatalf("Incorrect identification of pods in CLB. No pods identified in CLB when expected.")
 	}
 }
 
