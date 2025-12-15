@@ -3,10 +3,10 @@ name: Build image
 on:
   pull_request:
     branches:
-      - main
+      - release_9.1.0
   push:
     branches:
-      - main
+      - release_9.1.0
 
 jobs:
   build-image:
