@@ -222,6 +222,12 @@ data:
     # snat_rule_logging, vs_access_log, ip_reallocation_time.
     #enable_ncp_setting_crd = False
 
+    # The minimum number of seconds a handler must keep a watcher request open
+    # before timing it out. E.g. when it is set to 1800, the timeoutSeconds in
+    # the watcher request will be a random value between 1800 and 2*1800
+    # seconds.
+    min_request_timeout = 300
+
 
     [nsx_kube_proxy]
 
