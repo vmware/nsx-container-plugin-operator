@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/cluster-network-operator/pkg/apply"
 	"github.com/pkg/errors"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
@@ -39,7 +38,10 @@ var log = logf.Log.WithName("controller_pod")
 
 var SetControllerReference = controllerutil.SetControllerReference
 
-var ApplyObject = apply.ApplyObject
+// ApplyObject wrapper function that uses client.Apply instead of the deprecated client.Patch with client.Apply
+var ApplyObject = func(ctx context.Context, c client.Client, obj *unstructured.Unstructured) error {
+	return c.Apply(ctx, client.ApplyConfigurationFromUnstructured(obj), client.FieldOwner("nsx-ncp-operator"), client.ForceOwnership)
+}
 
 var firstBoot = true
 
@@ -115,16 +117,16 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	if err != nil {
 		return err
 	}
-	err = c.Watch(&source.Kind{Type: &appsv1.DaemonSet{}}, &handler.EnqueueRequestForObject{})
+	err = c.Watch(source.Kind(mgr.GetCache(), &appsv1.DaemonSet{}, &handler.TypedEnqueueRequestForObject[*appsv1.DaemonSet]{}))
 	if err != nil {
 		return err
 	}
-	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForObject{})
+	err = c.Watch(source.Kind(mgr.GetCache(), &appsv1.Deployment{}, &handler.TypedEnqueueRequestForObject[*appsv1.Deployment]{}))
 	if err != nil {
 		return err
 	}
 	// sometimes watching DaemonSet/Deployment cannot catch the pod restarting
-	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForObject{})
+	err = c.Watch(source.Kind(mgr.GetCache(), &corev1.Pod{}, &handler.TypedEnqueueRequestForObject[*corev1.Pod]{}))
 	if err != nil {
 		return err
 	}
@@ -180,7 +182,7 @@ func (r *ReconcilePod) isForNsxNodeAgentPod(request reconcile.Request) bool {
 
 // Reconcile updates the ClusterOperator.Status to match the current state of the
 // watched Deployments/DaemonSets
-func (r *ReconcilePod) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+func (r *ReconcilePod) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
 	result, err := r.status.CheckExistingAgentPods(&firstBoot, r.sharedInfo)
@@ -378,7 +380,7 @@ var getContainerLogsInPod = func(pod *corev1.Pod, containerName string) (
 		TailLines: &logLinesRetrieved,
 	}
 	podLogs, err := clientSet.CoreV1().Pods(pod.Namespace).GetLogs(
-		pod.Name, podLogOptions).Stream()
+		pod.Name, podLogOptions).Stream(context.TODO())
 	if err != nil {
 		log.Error(err, "Failed to invoke GetLogs")
 		return "", err

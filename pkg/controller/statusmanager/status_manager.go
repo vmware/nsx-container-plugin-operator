@@ -12,10 +12,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ghodss/yaml"
+	"sigs.k8s.io/yaml"
 
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
+	v1helpers "github.com/vmware/nsx-container-plugin-operator/pkg/util/k8s"
 	operatorv1 "github.com/vmware/nsx-container-plugin-operator/pkg/apis/operator/v1"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
@@ -23,6 +23,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/utils/clock"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
@@ -158,6 +159,7 @@ func (adaptor *StatusK8s) set(status *StatusManager, reachedAvailableLevel bool,
 					Reason:  "Startup",
 					Message: "The network is starting up",
 				},
+				clock.RealClock{},
 			)
 		}
 
@@ -203,6 +205,7 @@ func (adaptor *StatusOc) set(status *StatusManager, reachedAvailableLevel bool, 
 					Reason:  "Startup",
 					Message: "The network is starting up",
 				},
+				clock.RealClock{},
 			)
 		}
 
@@ -211,6 +214,7 @@ func (adaptor *StatusOc) set(status *StatusManager, reachedAvailableLevel bool, 
 				Type:   configv1.OperatorUpgradeable,
 				Status: configv1.ConditionTrue,
 			},
+			clock.RealClock{},
 		)
 
 		if reflect.DeepEqual(*oldStatus, co.Status) {
@@ -228,6 +232,10 @@ func (adaptor *StatusOc) set(status *StatusManager, reachedAvailableLevel bool, 
 			log.Info(fmt.Sprintf("Created ClusterOperator with conditions:\n%s", string(buf)))
 			return nil
 		}
+		// ClusterOperator has a /status subresource, so its Status fields can only
+		// be persisted via the Status() subclient. The fake client used in tests
+		// enforces the same semantics once status subresources are registered on
+		// the builder.
 		if err := status.client.Status().Update(context.TODO(), co); err != nil {
 			return err
 		}

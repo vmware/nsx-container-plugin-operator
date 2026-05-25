@@ -19,7 +19,7 @@ import (
 	"gopkg.in/ini.v1"
 
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/cluster-network-operator/pkg/render"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/util/render"
 	"github.com/pkg/errors"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	corev1 "k8s.io/api/core/v1"

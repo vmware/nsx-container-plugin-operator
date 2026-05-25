@@ -13,7 +13,7 @@ import (
 	"time"
 
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
+	v1helpers "github.com/vmware/nsx-container-plugin-operator/pkg/util/k8s"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -29,8 +29,12 @@ import (
 )
 
 func init() {
-	configv1.AddToScheme(scheme.Scheme)
-	appsv1.AddToScheme(scheme.Scheme)
+	if err := configv1.AddToScheme(scheme.Scheme); err != nil {
+		panic(err)
+	}
+	if err := appsv1.AddToScheme(scheme.Scheme); err != nil {
+		panic(err)
+	}
 }
 
 func getCO(client client.Client, name string) (*configv1.ClusterOperator, error) {
@@ -82,7 +86,18 @@ func getTestStatusK8s() (*StatusManager, client.Client) {
 }
 
 func getTestStatus(adaptorName string) *StatusManager {
-	client := fake.NewFakeClient()
+	// In controller-runtime v0.18+ the fake client enforces status-subresource
+	// semantics: plain Update() will NOT persist the .Status field for any of
+	// the types listed below. Tests must therefore use Status().Update() when
+	// they mutate .Status, mirroring real-cluster behaviour.
+	client := fake.NewClientBuilder().
+		WithScheme(scheme.Scheme).
+		WithStatusSubresource(
+			&configv1.ClusterOperator{},
+			&appsv1.DaemonSet{},
+			&appsv1.Deployment{},
+		).
+		Build()
 	mapper := &FakeRESTMapper{}
 	sharedInfo := &sharedinfo.SharedInfo{
 		AdaptorName: adaptorName,
@@ -360,11 +375,11 @@ func TestStatusSetFromDaemonSets(t *testing.T) {
 
 	// Now start "deploying"
 	for dsA.Status.NumberUnavailable > 0 || dsB.Status.NumberUnavailable > 0 {
-		err = client.Update(context.TODO(), dsA)
+		err = client.Status().Update(context.TODO(), dsA)
 		if err != nil {
 			t.Fatalf("error updating DaemonSet: %v", err)
 		}
-		err = client.Update(context.TODO(), dsB)
+		err = client.Status().Update(context.TODO(), dsB)
 		if err != nil {
 			t.Fatalf("error updating DaemonSet: %v", err)
 		}
@@ -416,11 +431,11 @@ func TestStatusSetFromDaemonSets(t *testing.T) {
 		t.Fatalf("assertion failed: %#v, %#v", dsA, dsB)
 	}
 
-	err = client.Update(context.TODO(), dsA)
+	err = client.Status().Update(context.TODO(), dsA)
 	if err != nil {
 		t.Fatalf("error updating DaemonSet: %v", err)
 	}
-	err = client.Update(context.TODO(), dsB)
+	err = client.Status().Update(context.TODO(), dsB)
 	if err != nil {
 		t.Fatalf("error updating DaemonSet: %v", err)
 	}
@@ -463,7 +478,9 @@ func TestStatusSetFromDaemonSets(t *testing.T) {
 	}
 
 	// Now, bump the generation of one of the daemonsets, and verify
-	// that we enter Progressing state but otherwise stay Available
+	// that we enter Progressing state but otherwise stay Available.
+	// Generation lives in ObjectMeta, so this is a spec/metadata update
+	// (plain Update) — not a status update.
 	dsA.Generation = 2
 	err = client.Update(context.TODO(), dsA)
 	if err != nil {
@@ -506,7 +523,7 @@ func TestStatusSetFromDaemonSets(t *testing.T) {
 		NumberReady:            1,
 		ObservedGeneration:     2,
 	}
-	err = client.Update(context.TODO(), dsA)
+	err = client.Status().Update(context.TODO(), dsA)
 	if err != nil {
 		t.Fatalf("error updating DaemonSet: %v", err)
 	}
@@ -546,7 +563,7 @@ func TestStatusSetFromDaemonSets(t *testing.T) {
 		NumberUnavailable:      1,
 		ObservedGeneration:     2,
 	}
-	err = client.Update(context.TODO(), dsA)
+	err = client.Status().Update(context.TODO(), dsA)
 	if err != nil {
 		t.Fatalf("error updating DaemonSet: %v", err)
 	}
@@ -587,7 +604,7 @@ func TestStatusSetFromDaemonSets(t *testing.T) {
 		ObservedGeneration:     2,
 		UpdatedNumberScheduled: 1,
 	}
-	err = client.Update(context.TODO(), dsA)
+	err = client.Status().Update(context.TODO(), dsA)
 	if err != nil {
 		t.Fatalf("error updating DaemonSet: %v", err)
 	}
@@ -689,7 +706,7 @@ func TestStatusSetFromDaemonSets(t *testing.T) {
 		ObservedGeneration:     2,
 		UpdatedNumberScheduled: 1,
 	}
-	err = client.Update(context.TODO(), dsA)
+	err = client.Status().Update(context.TODO(), dsA)
 	if err != nil {
 		t.Fatalf("error updating DaemonSet: %v", err)
 	}
@@ -810,7 +827,7 @@ func TestStatusSetFromDeployments(t *testing.T) {
 	// Update to report expected deployment size
 	depA.Status.UnavailableReplicas = 0
 	depA.Status.AvailableReplicas = 1
-	err = client.Update(context.TODO(), depA)
+	err = client.Status().Update(context.TODO(), depA)
 	if err != nil {
 		t.Fatalf("error updating Deployment: %v", err)
 	}
@@ -956,7 +973,7 @@ func TestStatusSetFromDeployments(t *testing.T) {
 
 	depB.Status.UnavailableReplicas = 0
 	depB.Status.AvailableReplicas = 1
-	err = client.Update(context.TODO(), depB)
+	err = client.Status().Update(context.TODO(), depB)
 	if err != nil {
 		t.Fatalf("error updating Deployment: %v", err)
 	}
