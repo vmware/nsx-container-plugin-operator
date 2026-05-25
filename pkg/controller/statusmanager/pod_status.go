@@ -16,13 +16,14 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
+	v1helpers "github.com/vmware/nsx-container-plugin-operator/pkg/util/k8s"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/clock"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	client "sigs.k8s.io/controller-runtime/pkg/client"
@@ -545,13 +546,13 @@ func (status *StatusManager) CombineConditions(conditions *[]configv1.ClusterOpe
 	for _, newCondition := range *newConditions {
 		existingCondition := v1helpers.FindStatusCondition(*conditions, newCondition.Type)
 		if existingCondition == nil {
-			v1helpers.SetStatusCondition(conditions, newCondition)
+			v1helpers.SetStatusCondition(conditions, newCondition, clock.RealClock{})
 			messages += fmt.Sprintf("%v. ", newCondition)
 			changed = true
 		} else if (existingCondition.Status != newCondition.Status ||
 			existingCondition.Reason != newCondition.Reason ||
 			existingCondition.Message != newCondition.Message) {
-			v1helpers.SetStatusCondition(conditions, newCondition)
+			v1helpers.SetStatusCondition(conditions, newCondition, clock.RealClock{})
 			messages += fmt.Sprintf("%v. ", newCondition)
 			changed = true
 		}

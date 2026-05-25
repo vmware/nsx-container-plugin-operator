@@ -13,7 +13,6 @@ import (
 	"github.com/vmware/vsphere-automation-sdk-go/runtime/data"
 	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -40,7 +39,7 @@ func CheckIfNCPK8sResourceExists(
 	return true, nil
 }
 
-func identifyAndGetInstance(resName string) (runtime.Object, error) {
+func identifyAndGetInstance(resName string) (client.Object, error) {
 	if resName == NsxNcpBootstrapDsName || resName == NsxNodeAgentDsName {
 		return &appsv1.DaemonSet{}, nil
 	} else if resName == NsxNcpDeploymentName {

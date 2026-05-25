@@ -23,6 +23,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	k8sclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -145,7 +146,7 @@ func (r *ReconcilePod) testReconcileOnNotWatchedResource(t *testing.T) {
 			Namespace: "dummy",
 		},
 	}
-	res, err := r.Reconcile(req)
+	res, err := r.Reconcile(context.TODO(), req)
 	if err != nil {
 		t.Fatalf("reconcile: (%v)", err)
 	}
@@ -170,7 +171,7 @@ func (r *ReconcilePod) testReconcileOnWatchedResource(t *testing.T) {
 		},
 	}
 	r.client.Create(context.TODO(), ncpDeployment)
-	res, err := r.Reconcile(req)
+	res, err := r.Reconcile(context.TODO(), req)
 	if err != nil {
 		t.Fatalf("reconcile: (%v)", err)
 	}
@@ -200,7 +201,7 @@ func (r *ReconcilePod) testReconcileOnWatchedResourceWhenDeleted(t *testing.T) {
 			Namespace: "nsx-system",
 		},
 	}
-	SetControllerReference = func(owner, controlled metav1.Object, scheme *runtime.Scheme) error {
+	SetControllerReference = func(owner, controlled metav1.Object, scheme *runtime.Scheme, opts ...controllerutil.OwnerReferenceOption) error {
 		return nil
 	}
 	ApplyObject = func(ctx context.Context, client k8sclient.Client, obj *unstructured.Unstructured) error {
@@ -209,7 +210,7 @@ func (r *ReconcilePod) testReconcileOnWatchedResourceWhenDeleted(t *testing.T) {
 	}
 
 	// Do not create nsx-ncp deployment so that it assumes it's deleted
-	res, err := r.Reconcile(req)
+	res, err := r.Reconcile(context.TODO(), req)
 	if err != nil {
 		t.Fatalf("reconcile: (%v)", err)
 	}
@@ -241,7 +242,7 @@ func (r *ReconcilePod) testReconcileOnCLBNsxNodeAgentInvalidResolvConf(
 		SetControllerReference = originalSetControllerReferenceFunc
 		ApplyObject = originalApplyObject
 	}()
-	SetControllerReference = func(owner, controlled metav1.Object, scheme *runtime.Scheme) error {
+	SetControllerReference = func(owner, controlled metav1.Object, scheme *runtime.Scheme, opts ...controllerutil.OwnerReferenceOption) error {
 		return nil
 	}
 	ApplyObject = func(ctx context.Context, client k8sclient.Client, obj *unstructured.Unstructured) error {
@@ -285,7 +286,7 @@ func (r *ReconcilePod) testReconcileOnCLBNsxNodeAgentInvalidResolvConf(
 			Namespace: "nsx-system",
 		},
 	}
-	res, err := r.Reconcile(req)
+	res, err := r.Reconcile(context.TODO(), req)
 	if err != nil {
 		t.Fatalf("reconcile: (%v)", err)
 	}
@@ -332,7 +333,7 @@ func (r *ReconcilePod) testReconcileOnCLBNsxNodeAgentInvalidResolvConf(
 		return "Failed to establish a new connection: [Errno -2] Name " +
 			"or service not known", nil
 	}
-	res, err = r.Reconcile(req)
+	res, err = r.Reconcile(context.TODO(), req)
 	if err != nil {
 		t.Fatalf("reconcile: (%v)", err)
 	}
@@ -492,7 +493,14 @@ func _test_clb_due_to_invalid_resolv(c k8sclient.Client, t *testing.T) {
 			},
 		},
 	}
-	c.Update(context.TODO(), nodeAgentPod)
+	// Delete any existing pod first, then create the new one
+	c.Delete(context.TODO(), &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nsx-node-agent",
+			Namespace: "nsx-system",
+		},
+	})
+	c.Create(context.TODO(), nodeAgentPod)
 	oldGetContainerLogsInPod := getContainerLogsInPod
 	defer func() {
 		getContainerLogsInPod = oldGetContainerLogsInPod
