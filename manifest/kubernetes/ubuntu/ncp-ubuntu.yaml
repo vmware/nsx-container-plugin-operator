@@ -999,8 +999,7 @@ spec:
   template:
     metadata:
 
-      annotations:
-        container.apparmor.security.beta.kubernetes.io/nsx-node-agent: localhost/node-agent-apparmor
+      annotations: {}
 
       labels:
         tier: nsx-networking

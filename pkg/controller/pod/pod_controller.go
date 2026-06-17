@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/cluster-network-operator/pkg/apply"
 	"github.com/pkg/errors"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
@@ -39,7 +38,10 @@ var log = logf.Log.WithName("controller_pod")
 
 var SetControllerReference = controllerutil.SetControllerReference
 
-var ApplyObject = apply.ApplyObject
+// ApplyObject wrapper function that uses client.Patch instead of the old apply.ApplyObject
+var ApplyObject = func(ctx context.Context, c client.Client, obj *unstructured.Unstructured) error {
+	return c.Patch(ctx, obj, client.Apply, client.FieldOwner("nsx-ncp-operator"))
+}
 
 var firstBoot = true
 

@@ -6,7 +6,7 @@ metadata:
 spec:
   ncpReplicas: 1
   # Note that if one node has multiple attached VirtualNetworkInterfaces, this function is not supported and should not be set to true
-  addNodeTag: false
+  addNodeTag: true
   nsx-ncp:
     nodeSelector:
       # Uncomment below to add user-defined nodeSelector for NCP Deployment

@@ -14,7 +14,6 @@ import (
 
 	"github.com/imdario/mergo"
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/cluster-network-operator/pkg/apply"
 	k8sutil "github.com/openshift/cluster-network-operator/pkg/util/k8s"
 	"github.com/pkg/errors"
 	operatorv1 "github.com/vmware/nsx-container-plugin-operator/pkg/apis/operator/v1"
@@ -521,8 +520,8 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 				continue
 			}
 		}
-
-		if err = apply.ApplyObject(context.TODO(), r.client, obj); err != nil {
+		// TODO: Remove deprecated client.Apply
+		if err = r.client.Patch(context.TODO(), obj, client.Apply, client.FieldOwner("nsx-ncp-operator")); err != nil {
 			log.Error(err, fmt.Sprintf("could not apply (%s) %s/%s", obj.GroupVersionKind(), obj.GetNamespace(), obj.GetName()))
 			r.status.SetDegraded(statusmanager.OperatorConfig, "ApplyOperatorConfig",
 				fmt.Sprintf("Failed to apply operator configuration: %v", err))
@@ -558,7 +557,7 @@ func updateNetworkStatus(networkConfig *configv1.Network, configMap *corev1.Conf
 	}
 
 	if data != nil {
-		if err := apply.ApplyObject(context.TODO(), r.client, data); err != nil {
+		if err := r.client.Patch(context.TODO(), data, client.Apply, client.FieldOwner("nsx-ncp-operator")); err != nil {
 			log.Error(err, fmt.Sprintf("Could not apply (%s) %s/%s", data.GroupVersionKind(),
 				data.GetNamespace(), data.GetName()))
 			return err
