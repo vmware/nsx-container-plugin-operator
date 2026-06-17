@@ -1,0 +1,91 @@
+# Copyright © 2026 VMware, Inc. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+
+name: E2E Test
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test-e2e:
+    name: End-to-End Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check-out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go 1.26
+        uses: actions/setup-go@v4
+        with:
+          go-version: 1.26.2
+          cache: false
+
+      - name: Log in to Docker Hub
+        env:
+          DOCKER_USER_ENV: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASS_ENV: ${{ secrets.DOCKER_PASSWORD }}
+        
+        if: ${{ env.DOCKER_USER_ENV != '' && env.DOCKER_PASS_ENV != '' }}
+
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Create Kind Cluster
+        run: make kind-start
+
+      - name: Build Test Images
+        run: make build-test-images
+
+      - name: Load Images into Kind
+        run: make load-images
+
+      - name: Deploy Operator and Mock NSX
+        run: make deploy-e2e
+
+      - name: Run E2E Test Suite
+        run: make test-e2e-local
+
+      - name: Collect Debug Information
+        if: always()
+        run: |
+          mkdir -p debug-info
+          
+          echo "=== CLI Status: Nodes ==="
+          kubectl get nodes -o wide > debug-info/nodes.txt
+          cat debug-info/nodes.txt
+          
+          echo "=== CLI Status: Pods ==="
+          kubectl get pods -A -o wide > debug-info/pods.txt
+          cat debug-info/pods.txt
+          
+          echo "=== Describe Operator Pod ==="
+          kubectl describe pod -n nsx-system-operator -l name=nsx-ncp-operator > debug-info/operator-describe.txt
+          cat debug-info/operator-describe.txt
+          
+          echo "=== Describe NSX Mock Pod ==="
+          kubectl describe pod -n nsx-system -l app=nsx-mock > debug-info/nsx-mock-describe.txt
+          cat debug-info/nsx-mock-describe.txt
+          
+          echo "=== Operator Logs ==="
+          kubectl logs -n nsx-system-operator -l name=nsx-ncp-operator --all-containers=true --tail=-1 > debug-info/operator-logs.txt || true
+          cat debug-info/operator-logs.txt || true
+          
+          echo "=== NSX Mock Logs ==="
+          kubectl logs -n nsx-system -l app=nsx-mock --all-containers=true --tail=-1 > debug-info/nsx-mock-logs.txt || true
+          cat debug-info/nsx-mock-logs.txt || true
+
+      - name: Upload Debug Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-debug-info
+          path: debug-info/
+          retention-days: 7
+
+      - name: Clean up Kind Cluster
+        if: always()
+        run: make kind-stop

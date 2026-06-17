@@ -74,7 +74,7 @@ func main() {
 		Metrics: metricsserver.Options{
 			BindAddress: metricsBindAddr,
 		},
-		LeaderElection:          true,
+		LeaderElection:          false,
 		LeaderElectionID:        "nsx-ncp-operator-lock",
 		LeaderElectionNamespace: namespace,
 	}

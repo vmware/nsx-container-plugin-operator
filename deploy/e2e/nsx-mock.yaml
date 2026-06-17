@@ -1,0 +1,79 @@
+# Copyright © 2026 VMware, Inc. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nsx-mock
+  namespace: nsx-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nsx-mock
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nsx-mock
+subjects:
+- kind: ServiceAccount
+  name: nsx-mock
+  namespace: nsx-system
+roleRef:
+  kind: ClusterRole
+  name: nsx-mock
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nsx-mock
+  namespace: nsx-system
+  labels:
+    app: nsx-mock
+spec:
+  ports:
+  - port: 8443
+    targetPort: 8443
+    protocol: TCP
+    name: https
+  selector:
+    app: nsx-mock
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nsx-mock
+  namespace: nsx-system
+  labels:
+    app: nsx-mock
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nsx-mock
+  template:
+    metadata:
+      labels:
+        app: nsx-mock
+    spec:
+      serviceAccountName: nsx-mock
+      containers:
+      - name: nsx-mock
+        image: vmware/nsx-mock:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8443
+          name: https
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi

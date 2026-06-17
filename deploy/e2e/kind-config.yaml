@@ -1,0 +1,13 @@
+# Copyright © 2026 VMware, Inc. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        provider-id: "vsphere://12345678-1234-1234-1234-123456789000"
