@@ -12,15 +12,14 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/imdario/mergo"
+	"dario.cat/mergo"
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/openshift/cluster-network-operator/pkg/apply"
-	k8sutil "github.com/openshift/cluster-network-operator/pkg/util/k8s"
 	"github.com/pkg/errors"
 	operatorv1 "github.com/vmware/nsx-container-plugin-operator/pkg/apis/operator/v1"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/statusmanager"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
+	k8sutil "github.com/vmware/nsx-container-plugin-operator/pkg/util/k8s"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -72,22 +71,19 @@ func newReconciler(mgr manager.Manager, status *statusmanager.StatusManager, sha
 
 // Create a Predicate with filter function used by Controllers to filter Events before they are provided to EventHandlers.
 // Only event objects matching the watchNameSpace will be selected, otherwise filtered out.
-func byNameSpaceFilter(watchNameSpace string) predicate.Predicate {
-	return predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
-			return (e.Meta.GetNamespace() == watchNameSpace)
+func byNameSpaceFilter[T client.Object](watchNameSpace string) predicate.TypedPredicate[T] {
+	return predicate.TypedFuncs[T]{
+		CreateFunc: func(e event.TypedCreateEvent[T]) bool {
+			return e.Object.GetNamespace() == watchNameSpace
 		},
-
-		DeleteFunc: func(e event.DeleteEvent) bool {
-			return (e.Meta.GetNamespace() == watchNameSpace)
+		DeleteFunc: func(e event.TypedDeleteEvent[T]) bool {
+			return e.Object.GetNamespace() == watchNameSpace
 		},
-
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			return (e.MetaNew.GetNamespace() == watchNameSpace)
+		UpdateFunc: func(e event.TypedUpdateEvent[T]) bool {
+			return e.ObjectNew.GetNamespace() == watchNameSpace
 		},
-
-		GenericFunc: func(e event.GenericEvent) bool {
-			return (e.Meta.GetNamespace() == watchNameSpace)
+		GenericFunc: func(e event.TypedGenericEvent[T]) bool {
+			return e.Object.GetNamespace() == watchNameSpace
 		},
 	}
 }
@@ -112,24 +108,24 @@ func add(mgr manager.Manager, sharedInfo *sharedinfo.SharedInfo, r reconcile.Rec
 		// Pass watchedNamespace into controller Watch func to filer out unexpected namespace changes.
 		watchedNamespace = operatortypes.OperatorNamespace
 	}
-
 	// Watch for changes to primary resource NcpInstall CRD
 	// The NcpInstall CRD changes may appear in mutiple namespaces, only changes from watched namespace of operator will be queued for handler
-	err = c.Watch(&source.Kind{Type: &operatorv1.NcpInstall{}}, &handler.EnqueueRequestForObject{}, byNameSpaceFilter(watchedNamespace))
+	// err = c.Watch(source.Kind(mgr.GetCache(),&operatorv1.NcpInstall{}, &handler.EnqueueRequestForObject{}))
+	err = c.Watch(source.Kind(mgr.GetCache(), &operatorv1.NcpInstall{}, &handler.TypedEnqueueRequestForObject[*operatorv1.NcpInstall]{}, byNameSpaceFilter[*operatorv1.NcpInstall](watchedNamespace)))
 	if err != nil {
 		return err
 	}
 
 	// Watch for changes to primary resource ConfigMap
 	// The configmap resource changes may appear in mutiple namespaces, only changes from watched namespace of operator will be queued for handler
-	err = c.Watch(&source.Kind{Type: &corev1.ConfigMap{}}, &handler.EnqueueRequestForObject{}, byNameSpaceFilter(watchedNamespace))
+	err = c.Watch(source.Kind(mgr.GetCache(), &corev1.ConfigMap{}, &handler.TypedEnqueueRequestForObject[*corev1.ConfigMap]{}, byNameSpaceFilter[*corev1.ConfigMap](watchedNamespace)))
 	if err != nil {
 		return err
 	}
 
 	if sharedInfo.AdaptorName == "openshift4" {
 		// Watch for changes to primary resource Network CRD
-		err = c.Watch(&source.Kind{Type: &configv1.Network{}}, &handler.EnqueueRequestForObject{})
+		err = c.Watch(source.Kind(mgr.GetCache(), &configv1.Network{}, &handler.TypedEnqueueRequestForObject[*configv1.Network]{}))
 		if err != nil {
 			return err
 		}
@@ -139,13 +135,13 @@ func add(mgr manager.Manager, sharedInfo *sharedinfo.SharedInfo, r reconcile.Rec
 
 	// Watch for changes to primary resource Secret
 	// The Secret resouce changes may appear in mutiple namespaces, only changes from watched namespace of operator will be queued for handler
-	err = c.Watch(&source.Kind{Type: &corev1.Secret{}}, &handler.EnqueueRequestForObject{}, byNameSpaceFilter(watchedNamespace))
+	err = c.Watch(source.Kind(mgr.GetCache(), &corev1.Secret{}, &handler.TypedEnqueueRequestForObject[*corev1.Secret]{}, byNameSpaceFilter[*corev1.Secret](watchedNamespace)))
 	if err != nil {
 		return err
 	}
 
 	// Watch for changes to primary resource ClusterRole
-	err = c.Watch(&source.Kind{Type: &rbacv1.ClusterRole{}}, &handler.EnqueueRequestForObject{})
+	err = c.Watch(source.Kind(mgr.GetCache(), &rbacv1.ClusterRole{}, &handler.TypedEnqueueRequestForObject[*rbacv1.ClusterRole]{}))
 	if err != nil {
 		return err
 	}
@@ -184,7 +180,7 @@ func (r *ReconcileConfigMap) Validate(configmap *corev1.ConfigMap, spec *configv
 // Note:
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
-func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+func (r *ReconcileConfigMap) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	watchedNamespace := r.status.OperatorNamespace
 	if watchedNamespace == "" {
@@ -446,7 +442,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			if !ncpDeploymentChanged && !nsxNodeAgentDsChanged {
 				// Check if network config status must be updated
 				if networkConfigChanged {
-					err = updateNetworkStatus(networkConfig, instance, r)
+					err = updateNetworkStatus(ctx, networkConfig, instance, r)
 					if err != nil {
 						r.status.SetDegraded(statusmanager.ClusterConfig, "UpdateNetworkStatusError",
 							fmt.Sprintf("Failed to update network status: %v", err))
@@ -521,8 +517,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 				continue
 			}
 		}
-
-		if err = apply.ApplyObject(context.TODO(), r.client, obj); err != nil {
+		if err = r.client.Apply(ctx, client.ApplyConfigurationFromUnstructured(obj), client.FieldOwner("nsx-ncp-operator"), client.ForceOwnership); err != nil {
 			log.Error(err, fmt.Sprintf("could not apply (%s) %s/%s", obj.GroupVersionKind(), obj.GetNamespace(), obj.GetName()))
 			r.status.SetDegraded(statusmanager.OperatorConfig, "ApplyOperatorConfig",
 				fmt.Sprintf("Failed to apply operator configuration: %v", err))
@@ -534,7 +529,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 
 	// Update network CRD status
 	if networkConfigChanged {
-		err = updateNetworkStatus(networkConfig, instance, r)
+		err = updateNetworkStatus(ctx, networkConfig, instance, r)
 		if err != nil {
 			r.status.SetDegraded(statusmanager.ClusterConfig, "UpdateNetworkStatusError",
 				fmt.Sprintf("Failed to update network status: %v", err))
@@ -547,7 +542,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	return reconcile.Result{}, nil
 }
 
-func updateNetworkStatus(networkConfig *configv1.Network, configMap *corev1.ConfigMap, r *ReconcileConfigMap) error {
+func updateNetworkStatus(ctx context.Context, networkConfig *configv1.Network, configMap *corev1.ConfigMap, r *ReconcileConfigMap) error {
 	status := buildNetworkStatus(networkConfig, configMap)
 	// Render information
 	networkConfig.Status = status
@@ -558,7 +553,7 @@ func updateNetworkStatus(networkConfig *configv1.Network, configMap *corev1.Conf
 	}
 
 	if data != nil {
-		if err := apply.ApplyObject(context.TODO(), r.client, data); err != nil {
+		if err := r.client.Apply(ctx, client.ApplyConfigurationFromUnstructured(data), client.FieldOwner("nsx-ncp-operator"), client.ForceOwnership); err != nil {
 			log.Error(err, fmt.Sprintf("Could not apply (%s) %s/%s", data.GroupVersionKind(),
 				data.GetNamespace(), data.GetName()))
 			return err
