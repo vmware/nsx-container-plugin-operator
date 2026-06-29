@@ -25,9 +25,9 @@ else
         DOCKER_IMG_VERSION := $(VERSION)
 endif
 
-VERSION_LDFLAGS = -X github.com/vmware/nsx-container-plugin-operator/pkg/version.Version=$(VERSION)
-VERSION_LDFLAGS += -X github.com/vmware/nsx-container-plugin-operator/pkg/version.GitSHA=$(GIT_SHA)
-VERSION_LDFLAGS += -X github.com/vmware/nsx-container-plugin-operator/pkg/version.GitTreeState=$(GIT_TREE_STATE)
+VERSION_LDFLAGS = -X github.com/vmware/nsx-container-plugin-operator/version.Version=$(VERSION)
+VERSION_LDFLAGS += -X github.com/vmware/nsx-container-plugin-operator/version.GitSHA=$(GIT_SHA)
+VERSION_LDFLAGS += -X github.com/vmware/nsx-container-plugin-operator/version.GitTreeState=$(GIT_TREE_STATE)
 
 
 version-info:

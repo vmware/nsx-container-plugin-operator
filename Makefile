@@ -17,8 +17,7 @@ OPERATOR_IMG_NAME = vmware/nsx-container-plugin-operator
 
 .PHONY: build
 build:
-	CGO_ENABLED=0 GOOS=linux $(GO) build -o $(BINDIR)/$(OPERATOR_NAME) $(GOFLAGS) -ldflags '$(LDFLAGS)' ./cmd/manager
-	docker build -f build/Dockerfile . -t $(OPERATOR_IMG_NAME):$(DOCKER_IMG_VERSION)
+	docker build --build-arg LDFLAGS="$(LDFLAGS)" -f build/Dockerfile . -t $(OPERATOR_IMG_NAME):$(DOCKER_IMG_VERSION)
 	docker tag $(OPERATOR_IMG_NAME):$(DOCKER_IMG_VERSION) $(OPERATOR_IMG_NAME)
 
 .PHONY: bin
@@ -61,13 +60,11 @@ kind-stop:
 
 .PHONY: build-test-images
 build-test-images:
-	CGO_ENABLED=0 GOOS=linux $(GO) build -o $(BINDIR)/$(OPERATOR_NAME) $(GOFLAGS) -ldflags '$(LDFLAGS)' ./cmd/manager
-	# Temporarily strip AppArmor annotation for E2E testing on Kind
-	python3 -c "import sys; f = 'manifest/kubernetes/ubuntu/ncp-ubuntu.yaml'; c = open(f).read().replace('      annotations:\n        container.apparmor.security.beta.kubernetes.io/nsx-node-agent: localhost/node-agent-apparmor', '      annotations: {}'); open(f, 'w').write(c)"
-	docker build -f build/Dockerfile . -t $(OPERATOR_IMG_NAME):latest; \
-	status=$$?; \
-	git checkout manifest/kubernetes/ubuntu/ncp-ubuntu.yaml; \
-	exit $$status
+	@bash -c 'set -e; \
+	  MANIFEST=manifest/kubernetes/ubuntu/ncp-ubuntu.yaml; \
+	  trap "git checkout $$MANIFEST" EXIT; \
+	  python3 -c "import sys; f=\"$$MANIFEST\"; c=open(f).read().replace(\"      annotations:\n        container.apparmor.security.beta.kubernetes.io/nsx-node-agent: localhost/node-agent-apparmor\", \"      annotations: {}\"); open(f,\"w\").write(c)"; \
+	  docker build --build-arg LDFLAGS="$(LDFLAGS)" -f build/Dockerfile . -t $(OPERATOR_IMG_NAME):latest'
 	docker build -f build/fake-ncp/Dockerfile build/fake-ncp -t vmware/fake-ncp:v1
 	docker tag vmware/fake-ncp:v1 vmware/fake-ncp:v2-patched
 	docker build -f cmd/nsx-mock/Dockerfile . -t vmware/nsx-mock:latest
@@ -97,7 +94,7 @@ deploy-e2e:
 
 .PHONY: test-e2e-local
 test-e2e-local:
-	$(GO) test -v -count=1 -timeout 15m ./test/e2e/...
+	$(GO) test -v -count=1 -timeout 15m -ldflags '$(LDFLAGS)' ./test/e2e/...
 
 .PHONY: test-e2e
 test-e2e: kind-start build-test-images load-images deploy-e2e test-e2e-local kind-stop

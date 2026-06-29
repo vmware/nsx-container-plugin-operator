@@ -43,7 +43,7 @@ spec:
       containers:
         - name: nsx-ncp-operator
           image: vmware/nsx-container-plugin-operator:latest
-          command: ["/bin/bash", "-c", "nsx-ncp-operator --metrics-server-bind-address=:8181"]
+          command: ["/bin/bash", "-c", "nsx-ncp-operator --zap-time-encoding=iso8601 --metrics-server-bind-address=:8181"]
           volumeMounts:
           - mountPath: /host/etc/os-release
             name: host-os-release

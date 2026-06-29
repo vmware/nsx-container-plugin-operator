@@ -1,0 +1,11 @@
+**
+
+!go.mod
+!go.sum
+!cmd/**
+!pkg/**
+!version/**
+!manifest/**
+!build/bin/entrypoint
+!build/bin/user_setup
+!LICENSE
