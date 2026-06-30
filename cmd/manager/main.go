@@ -14,11 +14,10 @@ import (
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller"
 	"github.com/vmware/nsx-container-plugin-operator/version"
 
-	zapf "github.com/go-logr/zapr"
 	"github.com/spf13/pflag"
-	"go.uber.org/zap"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
@@ -32,27 +31,18 @@ func printVersion() {
 }
 
 func main() {
-	// Set up a production zap logger.
-	zapLog, err := zap.NewProduction()
-	if err != nil {
-		panic(fmt.Sprintf("unable to set up zap logger: %v", err))
-	}
-	defer zapLog.Sync()
-
-	// Create logr.Logger from zap logger
-	logger := zapf.NewLogger(zapLog)
-	logf.SetLogger(logger)
-
-	// metricsBindAddr is the TCP address that the controller should bind to
-	// for serving prometheus metrics.
 	var metricsBindAddr string
 	flag.StringVar(&metricsBindAddr, "metrics-server-bind-address", ":8181", "The address the prometheus metrics server binds to.")
+
+	zapOpts := zap.Options{}
+	zapOpts.BindFlags(flag.CommandLine)
 
 	// Add flags registered by imported packages (e.g. glog and
 	// controller-runtime)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
-
 	pflag.Parse()
+
+	logf.SetLogger(zap.New(zap.UseFlagOptions(&zapOpts)))
 
 	printVersion()
 
