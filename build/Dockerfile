@@ -1,5 +1,15 @@
-FROM golang:1.26.2 as golang-build
-FROM registry.access.redhat.com/ubi8/ubi:latest
+FROM golang:1.26.4 AS golang-build
+
+WORKDIR /workspace
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+ARG LDFLAGS=""
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "${LDFLAGS}" -o build/bin/nsx-ncp-operator ./cmd/manager
+
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
 LABEL name="nsx-container-plugin-operator"
 LABEL maintainer="NSX Containers Team <container-dev.pdl@broadcom.com>"
@@ -15,11 +25,11 @@ ENV OPERATOR=/usr/local/bin/nsx-ncp-operator \
     USER_UID=1001 \
     USER_NAME=nsx-ncp-operator
 
-COPY build/bin /usr/local/bin
+COPY build/bin/entrypoint /usr/local/bin/entrypoint
+COPY build/bin/user_setup /usr/local/bin/user_setup
+COPY --from=golang-build /workspace/build/bin/nsx-ncp-operator /usr/local/bin/nsx-ncp-operator
 COPY manifest /manifest
-RUN  rpm -e --nodeps curl-minimal || true && \
-     rpm -e --nodeps libcurl-minimal || true  && \
-     /usr/local/bin/user_setup
+RUN  /usr/local/bin/user_setup
 
 ENTRYPOINT ["/usr/local/bin/entrypoint"]
 

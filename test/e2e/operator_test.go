@@ -34,6 +34,7 @@ import (
 
 	"github.com/vmware/nsx-container-plugin-operator/pkg/apis"
 	operatorv1 "github.com/vmware/nsx-container-plugin-operator/pkg/apis/operator/v1"
+	"github.com/vmware/nsx-container-plugin-operator/version"
 )
 
 const (
@@ -93,7 +94,6 @@ func TestOperatorE2E(t *testing.T) {
 	if err := rbacv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("Failed to add rbac APIs to scheme: %v", err)
 	}
-
 	k8sClient, err := client.New(config, client.Options{Scheme: scheme})
 	if err != nil {
 		t.Fatalf("Failed to create controller-runtime client: %v", err)
@@ -121,6 +121,32 @@ func TestOperatorE2E(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Operator deployment failed to become ready: %v", err)
 		}
+	})
+
+	// --- Version Reporting ---
+	t.Run("Operator Reports Correct Version", func(t *testing.T) {
+		pods, err := clientset.CoreV1().Pods(operatorNamespace).List(ctx, metav1.ListOptions{
+			LabelSelector: "name=nsx-ncp-operator",
+		})
+		if err != nil || len(pods.Items) == 0 {
+			t.Fatalf("Failed to list operator pods: %v", err)
+		}
+
+		expectedLine := fmt.Sprintf("Operator Version: %s", version.Version)
+		var logBytes []byte
+		err = wait.PollImmediate(2*time.Second, 30*time.Second, func() (bool, error) {
+			logBytes, err = clientset.CoreV1().Pods(operatorNamespace).
+				GetLogs(pods.Items[0].Name, &corev1.PodLogOptions{}).
+				DoRaw(ctx)
+			if err != nil {
+				return false, err
+			}
+			return strings.Contains(string(logBytes), expectedLine), nil
+		})
+		if err != nil {
+			t.Fatalf("Operator pod logs do not contain %q — version stamp is missing or wrong.\nLogs:\n%s", expectedLine, string(logBytes))
+		}
+		t.Logf("Operator pod logs confirm version %s", version.Version)
 	})
 
 	// Setup: Patch existing nodes with vsphere ProviderIDs so the node controller can reconcile them

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Build stage
-FROM golang:1.26.2-alpine AS builder
+FROM golang:1.26.4-alpine AS builder
 WORKDIR /workspace
 
 # Copy dependency files
