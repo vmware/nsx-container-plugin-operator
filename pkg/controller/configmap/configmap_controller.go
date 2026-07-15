@@ -553,6 +553,9 @@ func updateNetworkStatus(ctx context.Context, networkConfig *configv1.Network, c
 	}
 
 	if data != nil {
+		data.SetManagedFields(nil)
+		data.SetResourceVersion("")
+		data.SetUID("")
 		if err := r.client.Apply(ctx, client.ApplyConfigurationFromUnstructured(data), client.FieldOwner("nsx-ncp-operator"), client.ForceOwnership); err != nil {
 			log.Error(err, fmt.Sprintf("Could not apply (%s) %s/%s", data.GroupVersionKind(),
 				data.GetNamespace(), data.GetName()))
