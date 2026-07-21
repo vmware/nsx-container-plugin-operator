@@ -556,6 +556,10 @@ func updateNetworkStatus(ctx context.Context, networkConfig *configv1.Network, c
 		data.SetManagedFields(nil)
 		data.SetResourceVersion("")
 		data.SetUID("")
+		// Remove 'spec' field from the apply configuration so that the operator
+		// only applies status/metadata changes, avoiding schema validation
+		// failures on uninitialized 'spec.networkDiagnostics' fields.
+		unstructured.RemoveNestedField(data.Object, "spec")
 		if err := r.client.Apply(ctx, client.ApplyConfigurationFromUnstructured(data), client.FieldOwner("nsx-ncp-operator"), client.ForceOwnership); err != nil {
 			log.Error(err, fmt.Sprintf("Could not apply (%s) %s/%s", data.GroupVersionKind(),
 				data.GetNamespace(), data.GetName()))
