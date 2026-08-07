@@ -649,12 +649,15 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+          # liveness.DEFAULT_LIVENESS_TIMEOUT bounds the in-process deep check
+          # below timeoutSeconds, so a wedged check surfaces as a probe
+          # failure rather than a kubelet client timeout.
           livenessProbe:
-            exec:
-              command:
-                - /bin/sh
-                - -c
-                - check_pod_liveness nsx-ncp 30
+            httpGet:
+              path: /healthz
+              port: 8086
+              host: 127.0.0.1
+              scheme: HTTP
             initialDelaySeconds: 5
             timeoutSeconds: 30
             periodSeconds: 10
