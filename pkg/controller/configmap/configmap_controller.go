@@ -279,7 +279,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Get network CRD configuration
-	networkConfig, err := r.getNetworkConfig(r)
+	networkConfig, rawNetworkSpec, err := r.getNetworkConfig(r)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -446,7 +446,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 			if !ncpDeploymentChanged && !nsxNodeAgentDsChanged {
 				// Check if network config status must be updated
 				if networkConfigChanged {
-					err = updateNetworkStatus(networkConfig, instance, r)
+					err = updateNetworkStatus(networkConfig, rawNetworkSpec, instance, r)
 					if err != nil {
 						r.status.SetDegraded(statusmanager.ClusterConfig, "UpdateNetworkStatusError",
 							fmt.Sprintf("Failed to update network status: %v", err))
@@ -534,7 +534,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 
 	// Update network CRD status
 	if networkConfigChanged {
-		err = updateNetworkStatus(networkConfig, instance, r)
+		err = updateNetworkStatus(networkConfig, rawNetworkSpec, instance, r)
 		if err != nil {
 			r.status.SetDegraded(statusmanager.ClusterConfig, "UpdateNetworkStatusError",
 				fmt.Sprintf("Failed to update network status: %v", err))
@@ -547,7 +547,7 @@ func (r *ReconcileConfigMap) Reconcile(request reconcile.Request) (reconcile.Res
 	return reconcile.Result{}, nil
 }
 
-func updateNetworkStatus(networkConfig *configv1.Network, configMap *corev1.ConfigMap, r *ReconcileConfigMap) error {
+func updateNetworkStatus(networkConfig *configv1.Network, rawNetworkSpec map[string]interface{}, configMap *corev1.ConfigMap, r *ReconcileConfigMap) error {
 	status := buildNetworkStatus(networkConfig, configMap)
 	// Render information
 	networkConfig.Status = status
@@ -561,10 +561,13 @@ func updateNetworkStatus(networkConfig *configv1.Network, configMap *corev1.Conf
 		data.SetManagedFields(nil)
 		data.SetResourceVersion("")
 		data.SetUID("")
-		// Remove 'spec' field from the apply configuration so that the operator
-		// only applies status/metadata changes, avoiding schema validation
-		// failures on uninitialized 'spec.networkDiagnostics' fields.
-		unstructured.RemoveNestedField(data.Object, "spec")
+		// Use unstructured to populate spec with the same data we retrieved earlier
+		// spec contains mandatory attributes such as NetworkDiagnostics which are not
+		// available in the version of the openshift Network API used in this version
+		// of the Operator
+		if rawNetworkSpec != nil {
+			unstructured.SetNestedMap(data.Object, rawNetworkSpec, "spec")
+		}
 		if err := apply.ApplyObject(context.TODO(), r.client, data); err != nil {
 			log.Error(err, fmt.Sprintf("Could not apply (%s) %s/%s", data.GroupVersionKind(),
 				data.GetNamespace(), data.GetName()))

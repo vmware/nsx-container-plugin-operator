@@ -25,6 +25,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
@@ -49,7 +50,8 @@ type Adaptor interface {
 	validateClusterNetwork(spec *configv1.NetworkSpec) []error
 	HasNetworkConfigChange(currConfig *configv1.Network, prevConfig *configv1.Network) bool
 	setControllerReference(r *ReconcileConfigMap, networkConfig *configv1.Network, obj metav1.Object) error
-	getNetworkConfig(r *ReconcileConfigMap) (*configv1.Network, error)
+	// This functions returns both the structured and the unstructured object
+	getNetworkConfig(r *ReconcileConfigMap) (*configv1.Network, map[string]interface{}, error)
 }
 
 type ConfigMap struct{}
@@ -247,14 +249,31 @@ func (adaptor *ConfigMapOc) setControllerReference(r *ReconcileConfigMap, networ
 	return err
 }
 
-func (adaptor *ConfigMapK8s) getNetworkConfig(r *ReconcileConfigMap) (*configv1.Network, error) {
-	return &configv1.Network{}, nil
+func (adaptor *ConfigMapK8s) getNetworkConfig(r *ReconcileConfigMap) (*configv1.Network, map[string]interface{}, error) {
+	return &configv1.Network{}, nil, nil
 }
 
-func (adaptor *ConfigMapOc) getNetworkConfig(r *ReconcileConfigMap) (*configv1.Network, error) {
+func (adaptor *ConfigMapOc) getNetworkConfig(r *ReconcileConfigMap) (*configv1.Network, map[string]interface{}, error) {
+	// Fetch as unstructured, rather than directly into the typed configv1.Network.
+	// We want to preserve the raw spec and reus as-is when updating the
+	// Network status later. The openshift API package we are using is too old and
+	// it lacks spec fields such as networkDiagnostics (added in OCP 4.16+).
+	existing := &unstructured.Unstructured{}
+	existing.SetGroupVersionKind(configv1.GroupVersion.WithKind("Network"))
+	if err := r.client.Get(context.TODO(), types.NamespacedName{Name: operatortypes.NetworkCRDName}, existing); err != nil {
+		return nil, nil, err
+	}
+	// create typed object from unstrucuted data
 	networkConfig := &configv1.Network{}
-	err := r.client.Get(context.TODO(), types.NamespacedName{Name: operatortypes.NetworkCRDName}, networkConfig)
-	return networkConfig, err
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(existing.Object, networkConfig); err != nil {
+		return nil, nil, err
+	}
+	// keep spec from unstructured so we can pass it later to Apply
+	rawSpec, _, err := unstructured.NestedMap(existing.Object, "spec")
+	if err != nil {
+		return nil, nil, err
+	}
+	return networkConfig, rawSpec, nil
 }
 
 func appendErrorIfNotNil(errs *[]error, err error) {
