@@ -110,15 +110,20 @@ type NsxClients struct {
 	Cluster               string
 }
 
+const (
+	vspherePrefix  = "vsphere://"
+	biosUuidPrefix = "biosUuid:"
+)
+
 var cachedNodeSet = map[string](*statusmanager.NodeStatus){}
 
 func getNodeExternalIdByProviderId(nsxClients *NsxClients, nodeName string, providerId string) (string, error) {
 	// providerId has the following format: vsphere://<uuid>
-	if len(providerId) != 46 {
+	if len(providerId) != 46 || !strings.HasPrefix(providerId, vspherePrefix) {
 		return "", errors.Errorf("invalid provider ID %s of node %s", providerId, nodeName)
 	}
 	localVarOptionals := make(map[string]interface{})
-	providerId = string([]byte(providerId)[10:])
+	providerUuid := strings.TrimPrefix(providerId, vspherePrefix)
 	nsxClient := nsxClients.ManagerClient
 	for true {
 		vms, _, err := nsxClient.FabricApi.ListVirtualMachines(nsxClient.Context, localVarOptionals)
@@ -128,7 +133,7 @@ func getNodeExternalIdByProviderId(nsxClients *NsxClients, nodeName string, prov
 		for _, vm := range vms.Results {
 			for _, computeId := range vm.ComputeIds {
 				// format of computeId: biosUuid:<uuid>
-				if providerId == string([]byte(computeId)[9:]) {
+				if strings.HasPrefix(computeId, biosUuidPrefix) && providerUuid == strings.TrimPrefix(computeId, biosUuidPrefix) {
 					return vm.ExternalId, nil
 				}
 			}
