@@ -66,3 +66,7 @@ rules:
 - apiGroups: ['']
   resources: [events]
   verbs: [create, get, list, patch, update, delete]
+# Required by the canary-workaround controller create/delete a companion NetworkPolicy in openshift-ingress-canary.
+- apiGroups: [networking.k8s.io]
+  resources: [networkpolicies]
+  verbs: [create, delete]

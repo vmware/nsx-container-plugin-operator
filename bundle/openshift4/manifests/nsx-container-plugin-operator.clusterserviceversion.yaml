@@ -355,6 +355,13 @@ spec:
           - patch
           - update
           - delete
+        - apiGroups:
+          - networking.k8s.io
+          resources:
+          - networkpolicies
+          verbs:
+          - create
+          - delete
         serviceAccountName: nsx-ncp-operator
     strategy: deployment
   installModes:
