@@ -618,3 +618,88 @@ func TestFillLbCertCfg(t *testing.T) {
 	assert.Equal(t, "", cfg.Section("nsx_v3").Key("lb_default_cert_path").Value())
 	assert.Equal(t, "", cfg.Section("nsx_v3").Key("lb_priv_key_path").Value())
 }
+
+func TestNilConfigMapData(t *testing.T) {
+	cidrs := []string{"10.0.0.0/24"}
+	mockNetworkSpec := createMockNetworkSpec(cidrs)
+
+	// Test FillDefaults does not panic with nil Data ConfigMap
+	k8sAdaptor := &ConfigMapK8s{}
+	nilDataCmK8s := &corev1.ConfigMap{Data: nil}
+	assert.NotPanics(t, func() {
+		_ = k8sAdaptor.FillDefaults(nilDataCmK8s, mockNetworkSpec)
+	})
+	assert.NotNil(t, nilDataCmK8s.Data)
+
+	ocAdaptor := &ConfigMapOc{}
+	nilDataCmOc := &corev1.ConfigMap{Data: nil}
+	assert.NotPanics(t, func() {
+		_ = ocAdaptor.FillDefaults(nilDataCmOc, mockNetworkSpec)
+	})
+	assert.NotNil(t, nilDataCmOc.Data)
+
+	// Test FillNsxAuthCfg does not panic with nil Data ConfigMap or nil Data Secret
+	nilDataCmAuth := &corev1.ConfigMap{Data: nil}
+	nsxSecret := &corev1.Secret{
+		Data: map[string][]byte{
+			"tls.crt": []byte("crt"),
+			"tls.key": []byte("key"),
+			"tls.ca":  []byte("ca"),
+		},
+	}
+	assert.NotPanics(t, func() {
+		_ = FillNsxAuthCfg(nilDataCmAuth, nsxSecret)
+	})
+	assert.NotNil(t, nilDataCmAuth.Data)
+
+	mockCmAuth := createMockConfigMap()
+	assert.NotPanics(t, func() {
+		err := FillNsxAuthCfg(mockCmAuth, &corev1.Secret{Data: nil})
+		assert.NoError(t, err)
+	})
+
+	// Test FillLbCertCfg does not panic with nil Data ConfigMap or nil Data Secret
+	nilDataCmLb := &corev1.ConfigMap{Data: nil}
+	lbSecret := &corev1.Secret{
+		Data: map[string][]byte{
+			"tls.crt": []byte("crt"),
+			"tls.key": []byte("key"),
+		},
+	}
+	assert.NotPanics(t, func() {
+		_ = FillLbCertCfg(nilDataCmLb, lbSecret)
+	})
+	assert.NotNil(t, nilDataCmLb.Data)
+
+	mockCmLb := createMockConfigMap()
+	assert.NotPanics(t, func() {
+		err := FillLbCertCfg(mockCmLb, &corev1.Secret{Data: nil})
+		assert.NoError(t, err)
+	})
+
+	// Test validateUnSupportedOptions with nil Data
+	nilDataCmUnsupp := &corev1.ConfigMap{Data: nil}
+	var errs []error
+	assert.NotPanics(t, func() {
+		errs = validateUnSupportedOptions(nilDataCmUnsupp)
+	})
+	assert.Empty(t, errs)
+	assert.NotNil(t, nilDataCmUnsupp.Data)
+
+	// Test GenerateOperatorConfigMap with nil Data opConfigmap
+	nilDataCmOp := &corev1.ConfigMap{Data: nil}
+	ncpCm := createMockConfigMap()
+	agentCm := createMockConfigMap()
+	assert.NotPanics(t, func() {
+		err := GenerateOperatorConfigMap(nilDataCmOp, ncpCm, agentCm)
+		assert.NoError(t, err)
+	})
+	assert.NotNil(t, nilDataCmOp.Data)
+	assert.Contains(t, nilDataCmOp.Data, operatortypes.ConfigMapDataKey)
+
+	// Test optionInConfigMap and getOptionInConfigMap with nil Data
+	assert.False(t, optionInConfigMap(&corev1.ConfigMap{Data: nil}, "coe", "cluster"))
+	assert.False(t, optionInConfigMap(nil, "coe", "cluster"))
+	assert.Equal(t, "", getOptionInConfigMap(&corev1.ConfigMap{Data: nil}, "coe", "cluster"))
+	assert.Equal(t, "", getOptionInConfigMap(nil, "coe", "cluster"))
+}

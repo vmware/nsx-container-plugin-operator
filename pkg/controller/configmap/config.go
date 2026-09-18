@@ -64,6 +64,9 @@ type ConfigMapOc struct {
 
 func (adaptor *ConfigMapK8s) FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error {
 	errs := []error{}
+	if configmap.Data == nil {
+		configmap.Data = make(map[string]string)
+	}
 	data := &configmap.Data
 	cfg, err := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 	if err != nil {
@@ -91,6 +94,9 @@ func (adaptor *ConfigMapK8s) FillDefaults(configmap *corev1.ConfigMap, spec *con
 
 func (adaptor *ConfigMapOc) FillDefaults(configmap *corev1.ConfigMap, spec *configv1.NetworkSpec) error {
 	errs := []error{}
+	if configmap.Data == nil {
+		configmap.Data = make(map[string]string)
+	}
 	data := &configmap.Data
 	cfg, err := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 	if err != nil {
@@ -127,6 +133,9 @@ func (adaptor *ConfigMapOc) FillDefaults(configmap *corev1.ConfigMap, spec *conf
 
 func (adaptor *ConfigMapK8s) validateConfigMap(configmap *corev1.ConfigMap) []error {
 	errs := []error{}
+	if configmap.Data == nil {
+		configmap.Data = make(map[string]string)
+	}
 	data := &configmap.Data
 	cfg, err := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 	if err != nil {
@@ -155,6 +164,9 @@ func (adaptor *ConfigMapK8s) validateConfigMap(configmap *corev1.ConfigMap) []er
 func (adaptor *ConfigMapOc) validateConfigMap(configmap *corev1.ConfigMap) []error {
 	// TODO: merge validateConfigMap because most logic are the same
 	errs := []error{}
+	if configmap.Data == nil {
+		configmap.Data = make(map[string]string)
+	}
 	data := &configmap.Data
 	cfg, err := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 	if err != nil {
@@ -302,6 +314,9 @@ func validateConfig(cfg *ini.File, sec string, key string) error {
 // Validate node agent specific options
 func validateNodeAgentOptions(configmap *corev1.ConfigMap) []error {
 	errs := []error{}
+	if configmap.Data == nil {
+		configmap.Data = make(map[string]string)
+	}
 	data := &configmap.Data
 	cfg, err := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 
@@ -317,6 +332,9 @@ func validateNodeAgentOptions(configmap *corev1.ConfigMap) []error {
 // Validate common options for both ncp and node agent
 func validateCommonOptions(configmap *corev1.ConfigMap) []error {
 	errs := []error{}
+	if configmap.Data == nil {
+		configmap.Data = make(map[string]string)
+	}
 	data := &configmap.Data
 	cfg, _ := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 	// Check DEFAULT section log_file option
@@ -331,6 +349,9 @@ func validateCommonOptions(configmap *corev1.ConfigMap) []error {
 // Including WCP and TAS specific options, MP supported options
 func validateUnSupportedOptions(configmap *corev1.ConfigMap) []error {
 	errs := []error{}
+	if configmap.Data == nil {
+		configmap.Data = make(map[string]string)
+	}
 	data := &configmap.Data
 	is_changed := false
 	cfg, err := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
@@ -386,6 +407,9 @@ func Render(configmap *corev1.ConfigMap, ncpReplicas *int32, ncpNodeSelector *ma
 	objs := []*unstructured.Unstructured{}
 
 	// Set configmap data
+	if configmap.Data == nil {
+		configmap.Data = make(map[string]string)
+	}
 	data := configmap.Data
 	cfg, err := ini.Load([]byte(data[operatortypes.ConfigMapDataKey]))
 	if err != nil {
@@ -718,12 +742,20 @@ func generateConfigMap(srcCfg *ini.File, sections []string) (string, error) {
 func GenerateOperatorConfigMap(opConfigmap *corev1.ConfigMap, ncpConfigMap *corev1.ConfigMap,
 	agentConfigMap *corev1.ConfigMap,
 ) error {
-	ncpCfg, err := ini.Load([]byte(ncpConfigMap.Data[operatortypes.ConfigMapDataKey]))
+	var ncpData string
+	if ncpConfigMap != nil && ncpConfigMap.Data != nil {
+		ncpData = ncpConfigMap.Data[operatortypes.ConfigMapDataKey]
+	}
+	ncpCfg, err := ini.Load([]byte(ncpData))
 	if err != nil {
 		log.Error(err, "Failed to load nsx-ncp ConfigMap")
 		return err
 	}
-	agentCfg, err := ini.Load([]byte(agentConfigMap.Data[operatortypes.ConfigMapDataKey]))
+	var agentData string
+	if agentConfigMap != nil && agentConfigMap.Data != nil {
+		agentData = agentConfigMap.Data[operatortypes.ConfigMapDataKey]
+	}
+	agentCfg, err := ini.Load([]byte(agentData))
 	if err != nil {
 		log.Error(err, "Failed to load nsx-node-agent ConfigMap")
 		return err
@@ -745,6 +777,9 @@ func GenerateOperatorConfigMap(opConfigmap *corev1.ConfigMap, ncpConfigMap *core
 		}
 	}
 
+	if opConfigmap.Data == nil {
+		opConfigmap.Data = make(map[string]string)
+	}
 	opConfigmap.Data[operatortypes.ConfigMapDataKey], err = iniWriteToString(opCfg)
 	if err != nil {
 		log.Error(err, "Failed to generate operator ConfigMap")
@@ -770,6 +805,9 @@ func iniWriteToString(cfg *ini.File) (string, error) {
 }
 
 func optionInConfigMap(configMap *corev1.ConfigMap, section string, key string) bool {
+	if configMap == nil || configMap.Data == nil {
+		return false
+	}
 	cfg, err := ini.Load([]byte(configMap.Data[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		log.Error(err, "Failed to load ConfigMap")
@@ -786,7 +824,7 @@ func optionInConfigMap(configMap *corev1.ConfigMap, section string, key string) 
 }
 
 func getOptionInConfigMap(configMap *corev1.ConfigMap, section string, key string) string {
-	if configMap == nil {
+	if configMap == nil || configMap.Data == nil {
 		return ""
 	}
 	cfg, err := ini.Load([]byte(configMap.Data[operatortypes.ConfigMapDataKey]))
@@ -817,6 +855,9 @@ func IsMTUChanged(currConfigMap *corev1.ConfigMap, prevConfigMap *corev1.ConfigM
 
 func FillNsxAuthCfg(configmap *corev1.ConfigMap, nsxSecret *corev1.Secret) error {
 	errs := []error{}
+	if configmap.Data == nil {
+		configmap.Data = make(map[string]string)
+	}
 	data := &configmap.Data
 	cfg, err := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 	if err != nil {
@@ -824,16 +865,18 @@ func FillNsxAuthCfg(configmap *corev1.ConfigMap, nsxSecret *corev1.Secret) error
 		return err
 	}
 
-	if nsx_cert, found := nsxSecret.Data["tls.crt"]; found && len(nsx_cert) > 0 {
-		appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "nsx_api_cert_file", "/etc/nsx-ujo/nsx-cert/tls.crt", true))
-	}
+	if nsxSecret != nil && nsxSecret.Data != nil {
+		if nsx_cert, found := nsxSecret.Data["tls.crt"]; found && len(nsx_cert) > 0 {
+			appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "nsx_api_cert_file", "/etc/nsx-ujo/nsx-cert/tls.crt", true))
+		}
 
-	if nsx_key, found := nsxSecret.Data["tls.key"]; found && len(nsx_key) > 0 {
-		appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "nsx_api_private_key_file", "/etc/nsx-ujo/nsx-cert/tls.key", true))
-	}
+		if nsx_key, found := nsxSecret.Data["tls.key"]; found && len(nsx_key) > 0 {
+			appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "nsx_api_private_key_file", "/etc/nsx-ujo/nsx-cert/tls.key", true))
+		}
 
-	if ca_file, found := nsxSecret.Data["tls.ca"]; found && len(ca_file) > 0 {
-		appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "ca_file", "/etc/nsx-ujo/nsx-cert/tls.ca", true))
+		if ca_file, found := nsxSecret.Data["tls.ca"]; found && len(ca_file) > 0 {
+			appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "ca_file", "/etc/nsx-ujo/nsx-cert/tls.ca", true))
+		}
 	}
 
 	// Write config back to ConfigMap data
@@ -848,6 +891,9 @@ func FillNsxAuthCfg(configmap *corev1.ConfigMap, nsxSecret *corev1.Secret) error
 
 func FillLbCertCfg(configmap *corev1.ConfigMap, lbSecret *corev1.Secret) error {
 	errs := []error{}
+	if configmap.Data == nil {
+		configmap.Data = make(map[string]string)
+	}
 	data := &configmap.Data
 	cfg, err := ini.Load([]byte((*data)[operatortypes.ConfigMapDataKey]))
 	if err != nil {
@@ -855,12 +901,14 @@ func FillLbCertCfg(configmap *corev1.ConfigMap, lbSecret *corev1.Secret) error {
 		return err
 	}
 
-	if lb_cert, found := lbSecret.Data["tls.crt"]; found && len(lb_cert) > 0 {
-		appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "lb_default_cert_path", "/etc/nsx-ujo/lb-cert/tls.crt", true))
-	}
+	if lbSecret != nil && lbSecret.Data != nil {
+		if lb_cert, found := lbSecret.Data["tls.crt"]; found && len(lb_cert) > 0 {
+			appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "lb_default_cert_path", "/etc/nsx-ujo/lb-cert/tls.crt", true))
+		}
 
-	if lb_key, found := lbSecret.Data["tls.key"]; found && len(lb_key) > 0 {
-		appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "lb_priv_key_path", "/etc/nsx-ujo/lb-cert/tls.key", true))
+		if lb_key, found := lbSecret.Data["tls.key"]; found && len(lb_key) > 0 {
+			appendErrorIfNotNil(&errs, fillDefault(cfg, "nsx_v3", "lb_priv_key_path", "/etc/nsx-ujo/lb-cert/tls.key", true))
+		}
 	}
 
 	// Write config back to ConfigMap data
