@@ -42,4 +42,15 @@ const (
 	NsxOvsKmodRenderKey         string        = "UseNsxOvsKmod"
 	TimeBeforeRecoverNetwork    time.Duration = 180 * time.Second
 	DefaultResyncPeriod         time.Duration = 2 * time.Minute
+
+	// OCP 4.22 ingress-canary host-network NetworkPolicy workaround.
+	// The ingress-canary NetworkPolicy uses a namespaceSelector matching
+	// policy-group.network.openshift.io/host-network, which NCP does not
+	// understand. The companion NetworkPolicy below explicitly allow-lists
+	// node IPs for the canary pods only, on the canary's ports.
+	IngressCanaryNamespace         string = "openshift-ingress-canary"
+	IngressCanaryNetworkPolicy     string = "ingress-canary"
+	CanaryWorkaroundNetworkPolicy  string = "canary-nsx-access"
+	CanaryWorkaroundManagedByLabel string = "nsx.vmware.com/managed-by"
+	CanaryWorkaroundManagedByValue string = "nsx-ncp-operator"
 )
