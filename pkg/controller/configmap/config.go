@@ -19,9 +19,10 @@ import (
 	"gopkg.in/ini.v1"
 
 	configv1 "github.com/openshift/api/config/v1"
-	"github.com/vmware/nsx-container-plugin-operator/pkg/util/render"
 	"github.com/pkg/errors"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/nondisruptcert"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/util/render"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -919,4 +920,38 @@ func FillLbCertCfg(configmap *corev1.ConfigMap, lbSecret *corev1.Secret) error {
 		return errors.Errorf("failed to fill lb certification configuration: %q", errs)
 	}
 	return nil
+}
+
+// configureTrustReload sets the NCP option only for a certified image. The
+// release manifest can provide its tested, immutable image references.
+func configureTrustReload(configMap *corev1.ConfigMap, source *corev1.Secret, operatorCanRunNDC bool) (enabled, live, rejected bool, err error) {
+	config, err := ini.LoadSources(ini.LoadOptions{SpaceBeforeInlineComment: true}, []byte(configMap.Data[operatortypes.ConfigMapDataKey]))
+	if err != nil {
+		return false, false, false, err
+	}
+	options, err := nondisruptcert.ReadOptions(config)
+	if err != nil {
+		return false, false, false, err
+	}
+	nsx := config.Section("nsx_v3")
+	nsx.DeleteKey("trust_reload_enabled")
+	enabled = options.Enabled && !(nsx.HasKey("insecure") && nsx.Key("insecure").MustBool(false))
+	image := os.Getenv(operatortypes.NcpImageEnv)
+	supported := false
+	if strings.Contains(image, "@sha256:") {
+		for _, certified := range strings.FieldsFunc(os.Getenv("NDC_RELOAD_NCP_IMAGES"), func(r rune) bool { return r == ',' }) {
+			if strings.TrimSpace(certified) == image {
+				supported = true
+				break
+			}
+		}
+	}
+	rejected = enabled && options.ReloadMode == "reload" && !supported
+	live = enabled && operatorCanRunNDC && supported && options.ReloadMode != "rollout" &&
+		source != nil && len(source.Data[nondisruptcert.TrustKey]) > 0
+	if live {
+		nsx.Key("trust_reload_enabled").SetValue("true")
+	}
+	configMap.Data[operatortypes.ConfigMapDataKey], err = iniWriteToString(config)
+	return enabled, live, rejected, err
 }

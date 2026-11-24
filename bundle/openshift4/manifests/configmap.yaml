@@ -637,4 +637,9 @@ data:
     # Deprecated option: deny_subnets_redistribution
     # Replaced by [nsx_v3] configure_t0_redistribution
 
+    [operator]
 
+    # Opt in to NSX non-disruptive certificate rotation.
+    #ndc_enabled = false
+    #ndc_poll_interval = 300
+    #ndc_ncp_reload_mode = auto

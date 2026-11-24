@@ -13,7 +13,6 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/vmware/nsx-container-plugin-operator/pkg/apis/operator/v1"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/version"
@@ -31,8 +30,7 @@ type SharedInfo struct {
 	PodSecurityPolicySupport bool
 	LastNodeAgentStartTime   map[string]time.Time
 	NetworkConfig            *configv1.Network
-	OperatorConfigMap        *corev1.ConfigMap
-	OperatorNsxSecret        *corev1.Secret
+	RequestNDCProbe          func()
 
 	NsxNodeAgentDsSpec    *unstructured.Unstructured
 	NsxNcpBootstrapDsSpec *unstructured.Unstructured

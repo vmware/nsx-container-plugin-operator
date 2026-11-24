@@ -11,22 +11,24 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	"sigs.k8s.io/yaml"
 
 	configv1 "github.com/openshift/api/config/v1"
-	v1helpers "github.com/vmware/nsx-container-plugin-operator/pkg/util/k8s"
 	operatorv1 "github.com/vmware/nsx-container-plugin-operator/pkg/apis/operator/v1"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller/sharedinfo"
+	"github.com/vmware/nsx-container-plugin-operator/pkg/nondisruptcert"
 	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
+	v1helpers "github.com/vmware/nsx-container-plugin-operator/pkg/util/k8s"
 	"github.com/vmware/nsx-container-plugin-operator/version"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/utils/clock"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/utils/clock"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -67,7 +69,7 @@ type StatusManager struct {
 	Adaptor
 }
 
-type Status struct {}
+type Status struct{}
 
 type StatusK8s struct {
 	Status
@@ -328,4 +330,30 @@ func (status *StatusManager) setNcpInstallCrdStatus(operatorNamespace string, co
 		log.Info("Updated ncp-install CRD status")
 	}
 	return err
+}
+
+// SetNDCStatus publishes an independent condition; routing and configuration
+// controllers continue to own their existing OpenShift conditions.
+func (status *StatusManager) SetNDCStatus(observation nondisruptcert.Status) {
+	status.Lock()
+	defer status.Unlock()
+	message := fmt.Sprintf("generation=%s", observation.Generation)
+	if observation.Endpoint != "" {
+		message += " endpoint=" + observation.Endpoint
+	}
+	if tr := observation.LastTransition; tr != nil {
+		message += fmt.Sprintf(" lastPersistedTransition=%s,%s,%s,%s", tr.Endpoint, tr.From, tr.To, tr.At.Format(time.RFC3339))
+	}
+	if observation.RecoveryRequired {
+		message += " recoveryRequired=true. Restore independently verified tls.ca in the operator namespace nsx-secret."
+	}
+	conditionStatus := configv1.ConditionFalse
+	if observation.Reason == "Ready" {
+		conditionStatus = configv1.ConditionTrue
+		message += " Downstream trust matches. Check each NCP replica for reload status."
+	}
+	status.set(status, false, configv1.ClusterOperatorStatusCondition{
+		Type: "NSXCertificateRotationReady", Status: conditionStatus,
+		Reason: observation.Reason, Message: message,
+	})
 }
