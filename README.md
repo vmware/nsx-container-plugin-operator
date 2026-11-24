@@ -262,6 +262,11 @@ will be added in clusteroperator nsx-ncp Degraded conditions.
 ### NCP Image
 User needs to set NCP image as an environment parameter `NCP_IMAGE` in `deploy/${platform}/operator.yaml`.
 
+### NSX certificate rotation on OpenShift
+
+See the [NDC setup and recovery guide](docs/ndc.md) for compatible image
+configuration, status, and manual trust recovery.
+
 ### Unsafe changes
 * (Openshift specific) If CIDRs in `clusterNetwork` are already applied, it is
 unsafe to remove them. NSX NCP operator won't fail when it detects some existing

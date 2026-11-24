@@ -703,3 +703,31 @@ func TestNilConfigMapData(t *testing.T) {
 	assert.Equal(t, "", getOptionInConfigMap(&corev1.ConfigMap{Data: nil}, "coe", "cluster"))
 	assert.Equal(t, "", getOptionInConfigMap(nil, "coe", "cluster"))
 }
+
+func TestConfigureTrustReload(t *testing.T) {
+	const knownImage = "registry.example/ncp@sha256:5ca787032f6ce20ecbd425643e82259e059d91798cffe672ce9a9f7bdaca4e64"
+	t.Setenv("NDC_RELOAD_NCP_IMAGES", knownImage)
+	for _, test := range []struct {
+		name, mode, image              string
+		leader, wantLive, wantRejected bool
+	}{
+		{"certified auto", "auto", knownImage, true, true, false},
+		{"unknown auto", "auto", "nsx-ncp:latest", true, false, false},
+		{"unknown forced", "reload", "nsx-ncp:latest", true, false, true},
+		{"certified rollout", "rollout", knownImage, true, false, false},
+		{"certified without coordination", "auto", knownImage, false, false, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv(operatortypes.NcpImageEnv, test.image)
+			data := "[operator]\nndc_enabled=true\nndc_ncp_reload_mode=" + test.mode + "\n[nsx_v3]\ntrust_reload_enabled=true\n"
+			configMap := &corev1.ConfigMap{Data: map[string]string{operatortypes.ConfigMapDataKey: data}}
+			source := &corev1.Secret{Data: map[string][]byte{"tls.ca": []byte("current trust")}}
+			enabled, live, rejected, err := configureTrustReload(configMap, source, test.leader)
+			assert.NoError(t, err)
+			assert.True(t, enabled)
+			assert.Equal(t, test.wantLive, live)
+			assert.Equal(t, test.wantRejected, rejected)
+			assert.Equal(t, test.wantLive, optionInConfigMap(configMap, "nsx_v3", "trust_reload_enabled"))
+		})
+	}
+}

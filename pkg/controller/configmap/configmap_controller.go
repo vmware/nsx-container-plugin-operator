@@ -6,6 +6,7 @@ package configmap
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"reflect"
@@ -54,6 +55,7 @@ func newReconciler(mgr manager.Manager, status *statusmanager.StatusManager, sha
 	configv1.Install(mgr.GetScheme())
 	reconcileConfigMap := ReconcileConfigMap{
 		client:     mgr.GetClient(),
+		reader:     mgr.GetAPIReader(),
 		scheme:     mgr.GetScheme(),
 		status:     status,
 		sharedInfo: sharedInfo,
@@ -157,6 +159,7 @@ type ReconcileConfigMap struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
 	client     client.Client
+	reader     client.Reader
 	scheme     *runtime.Scheme
 	status     *statusmanager.StatusManager
 	sharedInfo *sharedinfo.SharedInfo
@@ -192,10 +195,16 @@ func (r *ReconcileConfigMap) Reconcile(ctx context.Context, request reconcile.Re
 	if request.Namespace == watchedNamespace {
 		if request.Name == operatortypes.ConfigMapName {
 			reqLogger.Info("Reconciling nsx-ncp-operator ConfigMap change")
+			if wake := r.sharedInfo.RequestNDCProbe; wake != nil {
+				wake()
+			}
 		} else if request.Name == operatortypes.NcpInstallCRDName {
 			reqLogger.Info("Reconciling ncp-install CRD change")
 		} else if request.Name == operatortypes.NsxSecret {
 			reqLogger.Info("Reconciling nsx-secret change")
+			if wake := r.sharedInfo.RequestNDCProbe; wake != nil {
+				wake()
+			}
 		} else if request.Name == operatortypes.LbSecret {
 			reqLogger.Info("Reconciling lb-secret change")
 		} else {
@@ -306,7 +315,7 @@ func (r *ReconcileConfigMap) Reconcile(ctx context.Context, request reconcile.Re
 
 	// Get nsx-secret and lb-secret
 	opNsxSecret := &corev1.Secret{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: watchedNamespace, Name: operatortypes.NsxSecret}, opNsxSecret)
+	err = r.reader.Get(ctx, types.NamespacedName{Namespace: watchedNamespace, Name: operatortypes.NsxSecret}, opNsxSecret)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			log.Error(err, "Failed to get operator nsx-secret")
@@ -341,6 +350,27 @@ func (r *ReconcileConfigMap) Reconcile(ctx context.Context, request reconcile.Re
 		log.Info(fmt.Sprintf("%s is not set", operatortypes.LbSecret))
 	}
 
+	ndcEnabled, liveReload := false, false
+	rolloutGeneration := ""
+	if r.sharedInfo.AdaptorName == "openshift4" {
+		var reloadRejected bool
+		ndcEnabled, liveReload, reloadRejected, err = configureTrustReload(instance, opNsxSecret, r.sharedInfo.RequestNDCProbe != nil)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		if reloadRejected {
+			log.Info("Forced NDC reload rejected for uncertified NCP image; using rollout")
+		}
+		if ndcEnabled && opNsxSecret == nil {
+			// A source deletion requires administrative recovery. Leave the
+			// last downstream generation in place until a new source exists.
+			return reconcile.Result{}, nil
+		}
+		if ndcEnabled && !liveReload && len(opNsxSecret.Data["tls.ca"]) > 0 {
+			rolloutGeneration = fmt.Sprintf("%x", sha256.Sum256(opNsxSecret.Data["tls.ca"]))
+		}
+	}
+
 	// Render configurations
 	objs, err := Render(instance, &ncpReplicas, &ncpNodeSelector, &ncpTolerations, &nsxNodeAgentDsTolerations,
 		opNsxSecret, opLbSecret)
@@ -354,8 +384,6 @@ func (r *ReconcileConfigMap) Reconcile(ctx context.Context, request reconcile.Re
 	// Update shared info
 	r.updateSharedInfoWithNsxNcpResources(objs)
 	r.sharedInfo.NetworkConfig = networkConfig
-	r.sharedInfo.OperatorConfigMap = instance
-	r.sharedInfo.OperatorNsxSecret = opNsxSecret
 
 	// Generate applied operator ConfigMap
 	if appliedConfigMap == nil {
@@ -400,10 +428,27 @@ func (r *ReconcileConfigMap) Reconcile(ctx context.Context, request reconcile.Re
 		return reconcile.Result{}, err
 	}
 	if !needChange.ncp {
-		// Compare nsx-secret and lb-secret
-		needChange.ncp, err = r.isSecretChanged(opNsxSecret, opLbSecret)
+		var trustOnly bool
+		trustOnly, needChange.ncp, err = r.secretChanges(opNsxSecret, opLbSecret)
 		if err != nil {
-			return reconcile.Result{Requeue: true}, err
+			return reconcile.Result{}, err
+		}
+		if trustOnly && liveReload {
+			// Propagate only the rendered Secret on the trust-only path. In
+			// particular, do not reapply the pod template with SSA.
+			for _, obj := range objs {
+				if obj.GetKind() == "Secret" && obj.GetName() == operatortypes.NsxSecret && obj.GetNamespace() == operatortypes.NsxNamespace {
+					if err := r.setControllerReference(r, networkConfig, obj); err != nil {
+						return reconcile.Result{}, err
+					}
+					if err := r.client.Apply(ctx, client.ApplyConfigurationFromUnstructured(obj), client.FieldOwner("nsx-ncp-operator"), client.ForceOwnership); err != nil {
+						return reconcile.Result{}, err
+					}
+					break
+				}
+			}
+		} else if trustOnly && rolloutGeneration == "" {
+			needChange.ncp = true
 		}
 	}
 
@@ -428,7 +473,7 @@ func (r *ReconcileConfigMap) Reconcile(ctx context.Context, request reconcile.Re
 		if err != nil {
 			return reconcile.Result{Requeue: true}, err
 		} else if !anyMonitoredResDeleted {
-			ncpDeploymentChanged, err = r.isNcpDeploymentChanged(ncpReplicas, &ncpNodeSelector, &ncpTolerations)
+			ncpDeploymentChanged, err = r.isNcpDeploymentChanged(ncpReplicas, &ncpNodeSelector, &ncpTolerations, rolloutGeneration)
 			if err != nil {
 				return reconcile.Result{Requeue: true}, err
 			}
@@ -474,6 +519,27 @@ func (r *ReconcileConfigMap) Reconcile(ctx context.Context, request reconcile.Re
 
 		name := obj.GetName()
 		namespace := obj.GetNamespace()
+		if name == operatortypes.NsxNcpDeploymentName && namespace == operatortypes.NsxNamespace {
+			if rolloutGeneration != "" {
+				if err := unstructured.SetNestedField(obj.Object, rolloutGeneration, "spec", "template", "metadata", "annotations", ndcRolloutAnnotation); err != nil {
+					return reconcile.Result{}, err
+				}
+			}
+			if !needChange.ncp {
+				// Retain our previously applied rollout annotation when SSA
+				// reconciles an unrelated object or a new trust generation.
+				current := &appsv1.Deployment{}
+				err := r.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, current)
+				if err != nil && !apierrors.IsNotFound(err) {
+					return reconcile.Result{}, err
+				}
+				if existing := current.Spec.Template.Annotations["updateTimeStamp"]; existing != "" {
+					if err := unstructured.SetNestedField(obj.Object, existing, "spec", "template", "metadata", "annotations", "updateTimeStamp"); err != nil {
+						return reconcile.Result{}, err
+					}
+				}
+			}
+		}
 		// Redeploy NCP pods with patching NCP Deployment for detecting configmap sections impacting on NCP
 		// NCP_IMAGE or nsx-ncp replicas changes could be handled in ApplyObject with rendered Deployment obj
 		if appliedConfigMap != nil && needChange.ncp {
@@ -677,8 +743,10 @@ func (r *ReconcileConfigMap) isAnyMonitoredNCPResDeleted() (bool, error) {
 	return false, nil
 }
 
+const ndcRolloutAnnotation = "nsx.vmware.com/ndc-rollout-generation"
+
 func (r *ReconcileConfigMap) isNcpDeploymentChanged(ncpReplicas int32,
-	ncpNodeSelector *map[string]string, ncpTolerations *[]corev1.Toleration,
+	ncpNodeSelector *map[string]string, ncpTolerations *[]corev1.Toleration, rolloutGeneration string,
 ) (bool, error) {
 	ncpDeployment := &appsv1.Deployment{}
 	err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.NsxNcpDeploymentName},
@@ -688,6 +756,9 @@ func (r *ReconcileConfigMap) isNcpDeploymentChanged(ncpReplicas int32,
 			return true, nil
 		}
 		return false, err
+	}
+	if ncpDeployment.Spec.Template.Annotations[ndcRolloutAnnotation] != rolloutGeneration {
+		return true, nil
 	}
 	prevImage := ncpDeployment.Spec.Template.Spec.Containers[0].Image
 	currImage := os.Getenv(operatortypes.NcpImageEnv)
@@ -734,37 +805,26 @@ func (r *ReconcileConfigMap) isNsxNodeAgentDsChanged(nsxNodeAgentDsTolerations *
 	return false, nil
 }
 
-func (r *ReconcileConfigMap) isSecretChanged(opNsxSecret *corev1.Secret, opLbSecret *corev1.Secret) (bool, error) {
-	ncpNsxSecret := &corev1.Secret{}
-	err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.NsxSecret}, ncpNsxSecret)
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			log.Error(err, "Failed to get NCP nsx-secret")
-			return true, err
-		}
-		ncpNsxSecret = nil
+func (r *ReconcileConfigMap) secretChanges(opNsxSecret, opLbSecret *corev1.Secret) (trustOnly, rollout bool, err error) {
+	downstream := &corev1.Secret{}
+	if err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.NsxSecret}, downstream); err != nil && !apierrors.IsNotFound(err) {
+		return false, true, err
 	}
-	nsxSecretChanged := secretNotEqual(opNsxSecret, ncpNsxSecret)
-	if nsxSecretChanged {
-		log.Info("nsx-secret is changed")
-		return true, nil
+	if opNsxSecret == nil {
+		opNsxSecret = &corev1.Secret{}
 	}
-
-	ncpLbSecret := &corev1.Secret{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.LbSecret}, ncpLbSecret)
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			log.Error(err, "Failed to get NCP lb-secret")
-			return true, err
-		}
-		ncpLbSecret = nil
+	if compareKey(opNsxSecret, downstream, "tls.crt") || compareKey(opNsxSecret, downstream, "tls.key") {
+		return false, true, nil
 	}
-	lbSecretChanged := secretNotEqual(opLbSecret, ncpLbSecret)
-	if lbSecretChanged {
-		log.Info("lb-secret is changed")
-		return true, nil
+	caChanged := compareKey(opNsxSecret, downstream, "tls.ca")
+	lb := &corev1.Secret{}
+	if err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: operatortypes.NsxNamespace, Name: operatortypes.LbSecret}, lb); err != nil && !apierrors.IsNotFound(err) {
+		return false, true, err
 	}
-	return false, nil
+	if secretNotEqual(opLbSecret, lb) {
+		return false, true, nil
+	}
+	return caChanged, false, nil
 }
 
 func compareKey(s1 *corev1.Secret, s2 *corev1.Secret, key string) bool {

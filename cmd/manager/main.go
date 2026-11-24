@@ -12,6 +12,7 @@ import (
 
 	"github.com/vmware/nsx-container-plugin-operator/pkg/apis"
 	"github.com/vmware/nsx-container-plugin-operator/pkg/controller"
+	operatortypes "github.com/vmware/nsx-container-plugin-operator/pkg/types"
 	"github.com/vmware/nsx-container-plugin-operator/version"
 
 	"github.com/spf13/pflag"
@@ -32,6 +33,8 @@ func printVersion() {
 
 func main() {
 	var metricsBindAddr string
+	var leaderElect bool
+	flag.BoolVar(&leaderElect, "leader-elect", false, "Coordinate active operators with a Kubernetes Lease.")
 	flag.StringVar(&metricsBindAddr, "metrics-server-bind-address", ":8181", "The address the prometheus metrics server binds to.")
 
 	zapOpts := zap.Options{}
@@ -59,14 +62,19 @@ func main() {
 		          across all namespaces`)
 	}
 
+	leaseNamespace := namespace
+	if leaseNamespace == "" {
+		leaseNamespace = operatortypes.OperatorNamespace
+	}
+
 	// Create manager with appropriate options for controller-runtime v0.24.1
 	options := manager.Options{
 		Metrics: metricsserver.Options{
 			BindAddress: metricsBindAddr,
 		},
-		LeaderElection:          false,
+		LeaderElection:          leaderElect,
 		LeaderElectionID:        "nsx-ncp-operator-lock",
-		LeaderElectionNamespace: namespace,
+		LeaderElectionNamespace: leaseNamespace,
 	}
 
 	mgr, err := manager.New(ctrl.GetConfigOrDie(), options)
@@ -84,7 +92,7 @@ func main() {
 	}
 
 	// Setup all Controllers
-	if err := controller.AddToManager(mgr, namespace); err != nil {
+	if err := controller.AddToManager(mgr, namespace, leaderElect); err != nil {
 		log.Error(err, "unable to add controllers to manager")
 		os.Exit(1)
 	}

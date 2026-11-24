@@ -58,8 +58,8 @@ cp lb-secret.yaml ../../bundle/openshift4/manifests
 cp nsx-secret.yaml ../../bundle/openshift4/manifests
 cp operator.nsx.vmware.com_ncpinstalls_crd.yaml ../../bundle/openshift4/manifests
 faq -f yaml -o yaml --slurp \
-    '.[0].spec.install = {strategy: "deployment", spec:{ deployments: [{name: .[1].metadata.name, template: .[1].spec }], permissions: [{serviceAccountName: .[3].metadata.name, rules: .[2].rules }]}} | .[0]' \
-    ../../bundle/openshift4/manifests/nsx-container-plugin-operator.clusterserviceversion.yaml operator.yaml role.yaml service_account.yaml > csv.tmp.yaml && cat csv.tmp.yaml > \
+    '.[0].spec.install = {strategy: "deployment", spec:{ deployments: [{name: .[1].metadata.name, template: .[1].spec }], permissions: [{serviceAccountName: .[3].metadata.name, rules: (.[2].rules + .[4].rules) }]}} | .[0]' \
+    ../../bundle/openshift4/manifests/nsx-container-plugin-operator.clusterserviceversion.yaml operator.yaml role.yaml service_account.yaml leader-election-role.yaml > csv.tmp.yaml && cat csv.tmp.yaml > \
     ../../bundle/openshift4/manifests/nsx-container-plugin-operator.clusterserviceversion.yaml && rm csv.tmp.yaml
 popd
 

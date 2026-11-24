@@ -89,7 +89,7 @@ spec:
               - command:
                 - /bin/bash
                 - -c
-                - nsx-ncp-operator --zap-time-encoding=iso8601 --metrics-server-bind-address=:8181
+                - nsx-ncp-operator --leader-elect --zap-time-encoding=iso8601 --metrics-server-bind-address=:8181
                 env:
                 - name: POD_NAME
                   valueFrom:
@@ -122,6 +122,13 @@ spec:
                 name: host-os-release
       permissions:
       - rules:
+        - apiGroups: [coordination.k8s.io]
+          resources: [leases]
+          verbs: [create]
+        - apiGroups: [coordination.k8s.io]
+          resources: [leases]
+          resourceNames: [nsx-ncp-operator-lock]
+          verbs: [get, update]
         - apiGroups:
           - ""
           resources:

@@ -11,8 +11,8 @@ import (
 
 	"crypto/tls"
 	"crypto/x509"
-	"io/ioutil"
 	"net/http"
+	"net/url"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -61,6 +61,7 @@ func Add(mgr manager.Manager, status *statusmanager.StatusManager, sharedInfo *s
 func newReconciler(mgr manager.Manager, status *statusmanager.StatusManager, sharedInfo *sharedinfo.SharedInfo) reconcile.Reconciler {
 	return &ReconcileNode{
 		client:     mgr.GetClient(),
+		reader:     mgr.GetAPIReader(),
 		scheme:     mgr.GetScheme(),
 		status:     status,
 		sharedInfo: sharedInfo,
@@ -97,6 +98,7 @@ type ReconcileNode struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
 	client     client.Client
+	reader     client.Reader
 	scheme     *runtime.Scheme
 	status     *statusmanager.StatusManager
 	sharedInfo *sharedinfo.SharedInfo
@@ -251,173 +253,126 @@ func filterPortsByNodeAddresses(nsxClients *NsxClients, ports *[]model.SegmentPo
 	return filteredPorts, err
 }
 
-func getConnectorTLSConfig(insecure bool, clientCertFile string, clientKeyFile string, caFile string) (*tls.Config, error) {
-	tlsConfig := tls.Config{InsecureSkipVerify: insecure}
-
-	if len(clientCertFile) > 0 {
-		if len(clientKeyFile) == 0 {
-			return nil, fmt.Errorf("Please provide key file for client certificate")
-		}
-
-		cert, err := tls.LoadX509KeyPair(clientCertFile, clientKeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to load client cert/key pair: %v", err)
-		}
-
-		tlsConfig.Certificates = []tls.Certificate{cert}
-	}
-
-	if len(caFile) > 0 {
-		caCert, err := ioutil.ReadFile(caFile)
-		if err != nil {
-			return nil, err
-		}
-
-		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
-
-		tlsConfig.RootCAs = caCertPool
-	}
-	return &tlsConfig, nil
+type nsxTransport struct {
+	*http.Transport
+	requestProbe func()
 }
 
-func writeToFile(certPath string, certData []byte, keyPath string, keyData []byte, caPath string, caData []byte) error {
-	err := ioutil.WriteFile(certPath, certData, 0644)
-	if err != nil {
-		return fmt.Errorf("Failed to write cert file %s: %v", certPath, err)
+func (t *nsxTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	response, err := t.Transport.RoundTrip(req)
+	var tlsErr *tls.CertificateVerificationError
+	if errors.As(err, &tlsErr) {
+		t.requestProbe()
 	}
-	err = ioutil.WriteFile(keyPath, keyData, 0644)
-	if err != nil {
-		return fmt.Errorf("Failed to write private key file %s: %v", keyPath, err)
-	}
-	err = ioutil.WriteFile(caPath, caData, 0644)
-	if err != nil {
-		return fmt.Errorf("Failed to write CA file %s: %v", caPath, err)
-	}
-	return nil
+	return response, err
 }
 
-func (r *ReconcileNode) createNsxClients() (*NsxClients, error) {
-	configMap := r.sharedInfo.OperatorConfigMap
-	if configMap == nil {
-		log.Info("getting config from operator configmap")
-		watchedNamespace := r.status.OperatorNamespace
-		if watchedNamespace == "" {
-			log.Info(fmt.Sprintf("no namespace supplied for loading configMap, defaulting to: %s", operatortypes.OperatorNamespace))
-			watchedNamespace = operatortypes.OperatorNamespace
-		}
-		configMap = &corev1.ConfigMap{}
-		err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: watchedNamespace, Name: operatortypes.ConfigMapName}, configMap)
+func getConnectorTLSConfig(insecure bool, certData, keyData, caData []byte) (*tls.Config, error) {
+	tlsConfig := &tls.Config{InsecureSkipVerify: insecure}
+	if len(certData) > 0 {
+		cert, err := tls.X509KeyPair(certData, keyData)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to load NSX client key pair: %w", err)
+		}
+		tlsConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			return &cert, nil
 		}
 	}
-	if configMap == nil {
-		return nil, errors.Errorf("failed to get NSX config from operator ConfigMap")
+	if len(caData) > 0 || len(certData) > 0 {
+		// Client-certificate configurations have always used the supplied
+		// trust file, including an empty trust store when it is absent.
+		pool := x509.NewCertPool()
+		if len(caData) > 0 && !pool.AppendCertsFromPEM(caData) {
+			return nil, errors.New("invalid NSX trust bundle")
+		}
+		tlsConfig.RootCAs = pool
 	}
-	data := configMap.Data
-	cfg, err := ini.LoadSources(ini.LoadOptions{SpaceBeforeInlineComment: true}, []byte(data[operatortypes.ConfigMapDataKey]))
+	return tlsConfig, nil
+}
+
+func (r *ReconcileNode) createNsxClients(ctx context.Context) (*NsxClients, error) {
+	namespace := r.status.OperatorNamespace
+	if namespace == "" {
+		namespace = operatortypes.OperatorNamespace
+	}
+	configMap := &corev1.ConfigMap{}
+	if err := r.reader.Get(ctx, types.NamespacedName{Namespace: namespace, Name: operatortypes.ConfigMapName}, configMap); err != nil {
+		return nil, err
+	}
+	cfg, err := ini.LoadSources(ini.LoadOptions{SpaceBeforeInlineComment: true}, []byte(configMap.Data[operatortypes.ConfigMapDataKey]))
 	if err != nil {
 		return nil, err
 	}
-	var cluster = cfg.Section("coe").Key("cluster").Value()
-	// only use the first one if multiple endpoints are provided in nsx_api_managers
-	var managerHost = strings.Split(cfg.Section("nsx_v3").Key("nsx_api_managers").Value(), ",")[0]
-	var user = cfg.Section("nsx_v3").Key("nsx_api_user").Value()
-	var password = cfg.Section("nsx_v3").Key("nsx_api_password").Value()
-	var insecure = false
-	if strings.ToLower(cfg.Section("nsx_v3").Key("insecure").Value()) == "true" {
-		insecure = true
+	nsx := cfg.Section("nsx_v3")
+	// Node tagging uses one manager. The NDC controller independently monitors all endpoints.
+	managerHost := strings.TrimSpace(strings.Split(nsx.Key("nsx_api_managers").Value(), ",")[0])
+	if !strings.Contains(managerHost, "://") {
+		managerHost = "https://" + managerHost
 	}
-	nsxClients := NsxClients{}
-	nsxClients.Cluster = cluster
+	endpoint, err := url.Parse(managerHost)
+	if err != nil || endpoint.Scheme != "https" || endpoint.Host == "" || endpoint.User != nil {
+		return nil, errors.New("invalid NSX manager endpoint")
+	}
+	user := nsx.Key("nsx_api_user").Value()
+	password := nsx.Key("nsx_api_password").Value()
+	insecure := nsx.Key("insecure").MustBool(false)
+	nsxClients := &NsxClients{Cluster: cfg.Section("coe").Key("cluster").Value()}
 
-	// Get cert/key/ca, then write then into temp files
-	var certData, keyData, caData []byte
-	nsxSecret := r.sharedInfo.OperatorNsxSecret
-	if nsxSecret == nil {
-		watchedNamespace := r.status.OperatorNamespace
-		if watchedNamespace == "" {
-			log.Info(fmt.Sprintf("no namespace supplied for loading configMap, defaulting to: %s", operatortypes.OperatorNamespace))
-			watchedNamespace = operatortypes.OperatorNamespace
-		}
-		nsxSecret = &corev1.Secret{}
-		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: watchedNamespace, Name: operatortypes.NsxSecret}, nsxSecret)
-		if err != nil {
-			log.Info("failed to get operator nsx-secret")
-		}
+	source := &corev1.Secret{}
+	err = r.reader.Get(ctx, types.NamespacedName{Namespace: namespace, Name: operatortypes.NsxSecret}, source)
+	if err != nil && !k8serrors.IsNotFound(err) {
+		return nil, err
 	}
-	if nsxSecret != nil {
-		certData = nsxSecret.Data["tls.crt"]
-		keyData = nsxSecret.Data["tls.key"]
-		caData = nsxSecret.Data["tls.ca"]
+	if k8serrors.IsNotFound(err) && cfg.Section("operator").Key("ndc_enabled").MustBool(false) {
+		return nil, errors.New("NSX source Secret missing")
 	}
-
-	tmpCertPath := ""
-	tmpKeyPath := ""
-	tmpCAPath := ""
-	// cert/key is preferred to connect to NSX
-	if len(certData) > 0 {
-		tmpCertPath = operatortypes.NsxCertTempPath
-		tmpKeyPath = operatortypes.NsxKeyTempPath
-		tmpCAPath = operatortypes.NsxCATempPath
-		err = writeToFile(tmpCertPath, certData, tmpKeyPath, keyData, tmpCAPath, caData)
-		if err != nil {
-			return nil, err
+	certData, keyData, caData := source.Data["tls.crt"], source.Data["tls.key"], source.Data["tls.ca"]
+	if len(certData) == 0 {
+		if user == "" {
+			return nil, errors.New("no credentials for NSX authentication supplied")
 		}
-		log.Info("using cert and private key to connect to NSX")
-	} else {
-		if len(user) == 0 {
-			return nil, errors.Errorf("no credentials for NSX authentication supplied")
-		} else {
-			securityCtx := core.NewSecurityContextImpl()
-			securityCtx.SetProperty(security.AUTHENTICATION_SCHEME_ID, security.USER_PASSWORD_SCHEME_ID)
-			securityCtx.SetProperty(security.USER_KEY, user)
-			securityCtx.SetProperty(security.PASSWORD_KEY, password)
-			nsxClients.PolicySecurityContext = securityCtx
-			log.Info("using username and password to connect to NSX")
-		}
+		securityCtx := core.NewSecurityContextImpl()
+		securityCtx.SetProperty(security.AUTHENTICATION_SCHEME_ID, security.USER_PASSWORD_SCHEME_ID)
+		securityCtx.SetProperty(security.USER_KEY, user)
+		securityCtx.SetProperty(security.PASSWORD_KEY, password)
+		nsxClients.PolicySecurityContext = securityCtx
 	}
 
-	// policy client
-	tlsConfig, err := getConnectorTLSConfig(insecure, tmpCertPath, tmpKeyPath, tmpCAPath)
+	tlsConfig, err := getConnectorTLSConfig(insecure, certData, keyData, caData)
 	if err != nil {
-		return nil, errors.Errorf("error while achieving tls config: %v", err)
+		return nil, err
 	}
-
-	tr := &http.Transport{
+	transport := &http.Transport{
 		Proxy:           http.ProxyFromEnvironment,
 		TLSClientConfig: tlsConfig,
 	}
-	httpClient := http.Client{Transport: tr}
-	nsxClients.PolicyHTTPClient = &httpClient
-	connector := policyclient.NewRestConnector(fmt.Sprintf("https://%s", managerHost), *nsxClients.PolicyHTTPClient)
+	httpClient := &http.Client{Transport: transport}
+	ndcEnabled := cfg.Section("operator").Key("ndc_enabled").MustBool(false)
+	if wake := r.sharedInfo.RequestNDCProbe; wake != nil && !insecure && ndcEnabled {
+		httpClient.Transport = &nsxTransport{Transport: transport, requestProbe: wake}
+	}
+	nsxClients.PolicyHTTPClient = httpClient
+	connector := policyclient.NewRestConnector("https://"+endpoint.Host, *httpClient)
 	if nsxClients.PolicySecurityContext != nil {
 		connector.SetSecurityContext(nsxClients.PolicySecurityContext)
 	}
 	nsxClients.PolicyConnector = connector
-
-	// manager client
-	nsxtClient, err := nsxt.NewAPIClient(&nsxt.Configuration{
-		Host:               managerHost,
-		BasePath:           fmt.Sprintf("https://%s/api/v1", managerHost),
-		UserName:           user,
-		Password:           password,
-		ClientAuthCertFile: tmpCertPath,
-		ClientAuthKeyFile:  tmpKeyPath,
-		CAFile:             tmpCAPath,
-		Insecure:           insecure,
+	nsxClients.ManagerClient, err = nsxt.NewAPIClient(&nsxt.Configuration{
+		Host:                 endpoint.Host,
+		BasePath:             "https://" + endpoint.Host + "/api/v1",
+		UserName:             user,
+		Password:             password,
+		ClientAuthCertString: string(certData),
+		HTTPClient:           httpClient,
 		RetriesConfiguration: nsxt.ClientRetriesConfiguration{
-			MaxRetries:    1,
-			RetryMinDelay: 100,
-			RetryMaxDelay: 500,
+			MaxRetries: 1, RetryMinDelay: 100, RetryMaxDelay: 500,
 		},
 	})
 	if err != nil {
+		httpClient.CloseIdleConnections()
 		return nil, err
 	}
-	nsxClients.ManagerClient = nsxtClient
-	return &nsxClients, nil
+	return nsxClients, nil
 }
 
 // Reconcile reads that state of the cluster for a Node object and makes changes based on the state read
@@ -481,7 +436,7 @@ func (r *ReconcileNode) Reconcile(ctx context.Context, request reconcile.Request
 		return reconcile.Result{}, nil
 	}
 
-	nsxClients, err := r.createNsxClients()
+	nsxClients, err := r.createNsxClients(ctx)
 	if err != nil {
 		cachedNodeSet[nodeName] = &statusmanager.NodeStatus{
 			Addresses: nodeAddresses,
@@ -492,6 +447,7 @@ func (r *ReconcileNode) Reconcile(ctx context.Context, request reconcile.Request
 		return reconcile.Result{}, err
 	}
 
+	defer nsxClients.PolicyHTTPClient.CloseIdleConnections()
 	cluster := nsxClients.Cluster
 	providerId := instance.Spec.ProviderID
 	nodeExternalId, err := getNodeExternalIdByProviderId(nsxClients, nodeName, providerId)

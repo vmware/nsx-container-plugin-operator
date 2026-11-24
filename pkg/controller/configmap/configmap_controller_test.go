@@ -256,7 +256,7 @@ func NewFakeReconcileConfigMap() *ReconcileConfigMap {
 func TestConfigMapController_isNcpDeploymentChanged(t *testing.T) {
 	r := NewFakeReconcileConfigMap()
 	// NCP deployment not found case
-	ncpChanged, _ := r.isNcpDeploymentChanged(1, nil, nil)
+	ncpChanged, _ := r.isNcpDeploymentChanged(1, nil, nil, "")
 	assert.Equal(t, true, ncpChanged)
 
 	container := corev1.Container{Image: "fakeImage"}
@@ -291,21 +291,21 @@ func TestConfigMapController_isNcpDeploymentChanged(t *testing.T) {
 
 	// Image no change case
 	os.Setenv("NCP_IMAGE", "fakeImage")
-	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &ncpTolerations)
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &ncpTolerations, "")
 	assert.Equal(t, false, ncpChanged)
 
 	// Replicas change case
-	ncpChanged, _ = r.isNcpDeploymentChanged(3, &ncpNodeSelector, &ncpTolerations)
+	ncpChanged, _ = r.isNcpDeploymentChanged(3, &ncpNodeSelector, &ncpTolerations, "")
 	assert.Equal(t, true, ncpChanged)
 
 	//Image change case
 	os.Setenv("NCP_IMAGE", "fakeNewImage")
-	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &ncpTolerations)
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &ncpTolerations, "")
 	assert.Equal(t, true, ncpChanged)
 
 	// NodeSelector no change case
 	os.Setenv("NCP_IMAGE", "fakeImage")
-	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &ncpTolerations)
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &ncpTolerations, "")
 	assert.Equal(t, false, ncpChanged)
 
 	// NodeSelector change case
@@ -313,17 +313,17 @@ func TestConfigMapController_isNcpDeploymentChanged(t *testing.T) {
 		"nodekey":  "master",
 		"nodekey1": "vm",
 	}
-	ncpChanged, _ = r.isNcpDeploymentChanged(1, &newNodeSelector, &ncpTolerations)
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &newNodeSelector, &ncpTolerations, "")
 	assert.Equal(t, true, ncpChanged)
 
 	// NodeSelector change case when ncpNodeSelector passing empty []
 	emptyNodeSelector := map[string]string{}
-	ncpChanged, _ = r.isNcpDeploymentChanged(1, &emptyNodeSelector, &ncpTolerations)
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &emptyNodeSelector, &ncpTolerations, "")
 	assert.Equal(t, true, ncpChanged)
 
 	// Node Tolerations no change case
 	os.Setenv("NCP_IMAGE", "fakeImage")
-	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &ncpTolerations)
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &ncpTolerations, "")
 	assert.Equal(t, false, ncpChanged)
 
 	// Node Tolerations change case
@@ -335,12 +335,12 @@ func TestConfigMapController_isNcpDeploymentChanged(t *testing.T) {
 			Effect:   "NoEffect",
 		},
 	}
-	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &newTolerations)
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &newTolerations, "")
 	assert.Equal(t, true, ncpChanged)
 
 	// Node Tolerations change case when passing empty []
 	var emptyTolerations []corev1.Toleration
-	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &emptyTolerations)
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &emptyTolerations, "")
 	assert.Equal(t, true, ncpChanged)
 
 	// Node Tolerations no change case when tolerations passed by empty []
@@ -361,7 +361,7 @@ func TestConfigMapController_isNcpDeploymentChanged(t *testing.T) {
 	}
 
 	r.client.Update(context.TODO(), ncpDeployment)
-	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &emptyTolerations)
+	ncpChanged, _ = r.isNcpDeploymentChanged(1, &ncpNodeSelector, &emptyTolerations, "")
 	assert.Equal(t, false, ncpChanged)
 
 }
@@ -440,6 +440,11 @@ func TestConfigMapController_isNsxNodeAgentDsChanged(t *testing.T) {
 
 func TestConfigMapController_isSecretChanged(t *testing.T) {
 	r := NewFakeReconcileConfigMap()
+	isSecretChanged := func(nsx, lb *corev1.Secret) (bool, error) {
+		trustOnly, rollout, err := r.secretChanges(nsx, lb)
+		return trustOnly || rollout, err
+	}
+
 	mockValue := []byte("mockCrt")
 	nsxSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -463,34 +468,34 @@ func TestConfigMapController_isSecretChanged(t *testing.T) {
 	r.client.Create(context.TODO(), lbSecret)
 
 	// Secret nil case
-	secretChanged, _ := r.isSecretChanged(nil, nil)
+	secretChanged, _ := isSecretChanged(nil, nil)
 	assert.True(t, secretChanged)
-	secretChanged, _ = r.isSecretChanged(nil, lbSecret)
+	secretChanged, _ = isSecretChanged(nil, lbSecret)
 	assert.True(t, secretChanged)
-	secretChanged, _ = r.isSecretChanged(nsxSecret, nil)
+	secretChanged, _ = isSecretChanged(nsxSecret, nil)
 	assert.True(t, secretChanged)
 
 	// Secret equal case, with missing key
-	secretChanged, _ = r.isSecretChanged(nsxSecret, lbSecret)
+	secretChanged, _ = isSecretChanged(nsxSecret, lbSecret)
 	assert.False(t, secretChanged)
 	// Secret equal, with empty key
 	mockSecret := &corev1.Secret{
 		Data: map[string][]byte{"tls.crt": mockValue, "tls.key": mockValue, "tls.ca": []byte{}},
 	}
-	secretChanged, _ = r.isSecretChanged(nsxSecret, mockSecret)
+	secretChanged, _ = isSecretChanged(nsxSecret, mockSecret)
 	assert.False(t, secretChanged)
 	// Secret not equal case, with missing key
 	mockSecret = &corev1.Secret{
 		Data: map[string][]byte{"tls.crt": mockValue, "tls.key": []byte("key")},
 	}
-	secretChanged, _ = r.isSecretChanged(nsxSecret, mockSecret)
+	secretChanged, _ = isSecretChanged(nsxSecret, mockSecret)
 	assert.True(t, secretChanged)
 	// Secret not equal, with all keys
 	mockSecret = &corev1.Secret{
 		Data: map[string][]byte{"tls.crt": mockValue, "tls.key": []byte("key"), "tls.ca": mockValue},
 	}
-	secretChanged, _ = r.isSecretChanged(nsxSecret, mockSecret)
+	secretChanged, _ = isSecretChanged(nsxSecret, mockSecret)
 	assert.True(t, secretChanged)
-	secretChanged, _ = r.isSecretChanged(mockSecret, lbSecret)
+	secretChanged, _ = isSecretChanged(mockSecret, lbSecret)
 	assert.True(t, secretChanged)
 }
